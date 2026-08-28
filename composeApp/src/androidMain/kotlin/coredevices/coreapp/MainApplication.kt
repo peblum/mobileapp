@@ -1,5 +1,6 @@
 package coredevices.coreapp
 
+import android.annotation.TargetApi
 import android.app.ActivityManager
 import android.app.Application
 import android.app.ApplicationExitInfo
@@ -10,7 +11,6 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.PowerManager
 import android.os.StrictMode
-import androidx.annotation.RequiresApi
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -108,22 +108,25 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
 
     private fun dumpPreviousExitInfo() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val am =
-                getSystemService(ActivityManager::class.java)
-            val reasons =
-                am.getHistoricalProcessExitReasons(packageName, 0, 5)
-            reasons.firstOrNull()?.let { info ->
-                val time = Instant.fromEpochMilliseconds(info.timestamp)
-                logger.i {
-                    "Previous exit @ $time reason=${reasonName(info.reason)} " +
-                            "description=${info.description} importance=${info.importance} " +
-                            "pss=${info.pss} rss=${info.rss} status=${info.status}"
-                }
+            dumpPreviousExitInfoR()
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.R)
+    private fun dumpPreviousExitInfoR() {
+        val am = getSystemService(ActivityManager::class.java)
+        val reasons = am.getHistoricalProcessExitReasons(packageName, 0, 5)
+        reasons.firstOrNull()?.let { info ->
+            val time = Instant.fromEpochMilliseconds(info.timestamp)
+            logger.i {
+                "Previous exit @ $time reason=${reasonName(info.reason)} " +
+                        "description=${info.description} importance=${info.importance} " +
+                        "pss=${info.pss} rss=${info.rss} status=${info.status}"
             }
         }
     }
 
-    @RequiresApi(30)
+    @TargetApi(Build.VERSION_CODES.R)
     private fun reasonName(reason: Int) = when (reason) {
         ApplicationExitInfo.REASON_ANR -> "ANR"
         ApplicationExitInfo.REASON_CRASH -> "CRASH_JAVA"

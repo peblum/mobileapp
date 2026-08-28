@@ -1,6 +1,5 @@
 package coredevices.util.models
 
-import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.job.JobInfo
@@ -14,7 +13,6 @@ import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED
 import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN
 import android.net.NetworkRequest
 import android.os.Build
-import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import co.touchlab.kermit.Logger
 import coredevices.util.transcription.CactusModelPathProvider
@@ -117,7 +115,6 @@ actual class ModelDownloadManager(
         return "modelJob-$modelSlug".hashCode()
     }
 
-    @RequiresPermission(Manifest.permission.RUN_USER_INITIATED_JOBS)
     private fun buildJobInfo(modelSlug: String, modelSizeMb: Int, stt: Boolean, networkRequest: NetworkRequest, allowMetered: Boolean): JobInfo {
         val builder = JobInfo.Builder(slugToJobId(modelSlug), serviceComponentName)
             .setExtras(
