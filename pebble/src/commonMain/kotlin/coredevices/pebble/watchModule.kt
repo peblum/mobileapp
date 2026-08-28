@@ -207,7 +207,16 @@ val watchModule = module {
     }
     singleOf(::ContactDeveloperApi)
     factoryOf(::Cohorts)
-    singleOf(::FirmwareUpdateCheck)
+    single {
+        FirmwareUpdateCheck(
+            memfault = get(),
+            engDashOta = get(),
+            cohorts = get(),
+            coreConfig = get(),
+            coreAnalytics = get(),
+            clock = get(),
+        )
+    }
     factoryOf(::PebbleFeatures)
     factoryOf(::WeatherFetcher)
     factoryOf(::LanguagePackRepository)
