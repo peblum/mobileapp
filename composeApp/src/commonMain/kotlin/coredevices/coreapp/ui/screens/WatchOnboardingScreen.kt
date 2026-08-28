@@ -81,6 +81,7 @@ import coredevices.pebble.ui.asCommonApp
 import coredevices.pebble.ui.connectedWatch
 import coredevices.pebble.ui.languagePackInstalled
 import coredevices.pebble.ui.launchApp
+import coredevices.pebble.ui.rememberExternalWatchAppConsentRequester
 import coredevices.pebble.ui.rememberSettingsItemsState
 import coredevices.ui.CoreLinearProgressIndicator
 import coredevices.ui.PebbleElevatedButton
@@ -402,6 +403,7 @@ fun OnboardingAppCarousel(
     // Only use inital list of in-collection IDs (i.e. don't remove from list when they add from this screen)
     val initialAllCollectionUuids = remember(allCollectionUuids != null) { allCollectionUuids.orEmpty() }
     val nativeLockerAddUtil: NativeLockerAddUtil = koinInject()
+    val requestExternalWatchAppConsent = rememberExternalWatchAppConsentRequester()
     val watchType = watch.watchType.watchType
     val apps = remember(storeHome, watchType, initialAllCollectionUuids) {
         storeHome.result.onboarding?.forType(watchType)?.mapNotNull { appId ->
@@ -469,22 +471,24 @@ fun OnboardingAppCarousel(
                         PebbleElevatedButton(
                             text = "Add",
                             onClick = {
-                                added = true
-                                GlobalScope.launch {
-                                    val addResult = nativeLockerAddUtil.addAppToLocker(
-                                        commonAppStore,
-                                        commonAppStore.storeSource
-                                    )
-                                    logger.v { "Add to locker from watch onboarding ${commonAppStore.storeApp?.title} result=$addResult" }
-                                    if (!addResult) {
-                                        snackbarDisplay.showSnackbar("Failed to add app")
-                                        return@launch
+                                requestExternalWatchAppConsent {
+                                    added = true
+                                    GlobalScope.launch {
+                                        val addResult = nativeLockerAddUtil.addAppToLocker(
+                                            commonAppStore,
+                                            commonAppStore.storeSource
+                                        )
+                                        logger.v { "Add to locker from watch onboarding ${commonAppStore.storeApp?.title} result=$addResult" }
+                                        if (!addResult) {
+                                            snackbarDisplay.showSnackbar("Failed to add app")
+                                            return@launch
+                                        }
+                                        libPebble.launchApp(
+                                            entry = entry,
+                                            snackbarDisplay = NoOpSnackbarDisplay,
+                                            connectedIdentifier = watch.identifier,
+                                        )
                                     }
-                                    libPebble.launchApp(
-                                        entry = entry,
-                                        snackbarDisplay = NoOpSnackbarDisplay,
-                                        connectedIdentifier = watch.identifier,
-                                    )
                                 }
                             },
                             primaryColor = true,

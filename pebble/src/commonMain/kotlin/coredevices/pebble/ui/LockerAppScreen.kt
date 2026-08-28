@@ -205,6 +205,7 @@ fun LockerAppScreen(topBarParams: TopBarParams, uuid: Uuid?, navBarNav: NavBarNa
         sharedViewModel.Init()
         var showRemoveConfirmDialog = remember { mutableStateOf(false) }
         var loadingToWatch by remember { mutableStateOf(false) }
+        val requestExternalWatchAppConsent = rememberExternalWatchAppConsentRequester()
 
         val lockerEntry = loadLockerEntry(uuid, sharedViewModel.watchType.value)
         val entry = remember(lockerEntry, viewModel.selectedStoreEntry) {
@@ -448,16 +449,18 @@ fun LockerAppScreen(topBarParams: TopBarParams, uuid: Uuid?, navBarNav: NavBarNa
                         PebbleElevatedButton(
                             text = text,
                             onClick = {
-                                // Global scope because it could take a second to download/sync/load app
-                                GlobalScope.launch {
-                                    if (connectedIdentifier != null) {
-                                        loadingToWatch = true
-                                        libPebble.launchApp(
-                                            entry,
-                                            topBarParams,
-                                            connectedIdentifier
-                                        )
-                                        loadingToWatch = false
+                                requestExternalWatchAppConsent {
+                                    // Global scope because it could take a second to download/sync/load app
+                                    GlobalScope.launch {
+                                        if (connectedIdentifier != null) {
+                                            loadingToWatch = true
+                                            libPebble.launchApp(
+                                                entry,
+                                                topBarParams,
+                                                connectedIdentifier
+                                            )
+                                            loadingToWatch = false
+                                        }
                                     }
                                 }
                             },
@@ -490,24 +493,26 @@ fun LockerAppScreen(topBarParams: TopBarParams, uuid: Uuid?, navBarNav: NavBarNa
                             PebbleElevatedButton(
                                 text = "Add To Watch",
                                 onClick = {
-                                    // Global scope because it could take a second to download/sync/load app
-                                    GlobalScope.launch {
-                                        val watch = lastConnectedWatch as? ConnectedPebbleDevice
-                                        viewModel.addedToLocker = true
-                                        val addResult = nativeLockerAddUtil.addAppToLocker(
-                                            entry.commonAppType,
-                                            entry.commonAppType.storeSource
-                                        )
-                                        if (!addResult) {
-                                            topBarParams.showSnackbar("Failed to add app")
-                                            return@launch
-                                        }
-                                        if (watch != null) {
-                                            libPebble.launchApp(
-                                                entry = entry,
-                                                snackbarDisplay = topBarParams,
-                                                connectedIdentifier = watch.identifier,
+                                    requestExternalWatchAppConsent {
+                                        // Global scope because it could take a second to download/sync/load app
+                                        GlobalScope.launch {
+                                            val watch = lastConnectedWatch as? ConnectedPebbleDevice
+                                            viewModel.addedToLocker = true
+                                            val addResult = nativeLockerAddUtil.addAppToLocker(
+                                                entry.commonAppType,
+                                                entry.commonAppType.storeSource
                                             )
+                                            if (!addResult) {
+                                                topBarParams.showSnackbar("Failed to add app")
+                                                return@launch
+                                            }
+                                            if (watch != null) {
+                                                libPebble.launchApp(
+                                                    entry = entry,
+                                                    snackbarDisplay = topBarParams,
+                                                    connectedIdentifier = watch.identifier,
+                                                )
+                                            }
                                         }
                                     }
                                 },
