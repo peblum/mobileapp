@@ -1,84 +1,93 @@
 package coredevices.mcp.client
 
-import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpError
+import io.ktor.server.engine.EmbeddedServer
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
-import io.netty.util.internal.logging.Slf4JLoggerFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import java.io.IOException
-import kotlin.test.Ignore
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 class HttpMcpIntegrationTest {
-    val initialPort = 8080
-    val impl = Implementation(
+    private val impl = Implementation(
         name = "TestClient",
-        version = "1.0.0"
+        version = "1.0.0",
     )
 
     private fun buildUrl(port: Int, sse: Boolean): String {
         return "http://127.0.0.1:${port}/${if (sse) "sse" else ""}"
     }
 
-    @Ignore
+    private fun startServer(): Pair<EmbeddedServer<*, *>, Int> {
+        val server = runSseMcpServer(port = 0, wait = false)
+        val port = runBlocking {
+            server.engine.resolvedConnectors().single().port
+        }
+        return server to port
+    }
+
     @Test
     fun basicClientConnectionTest() {
-        var port = initialPort
-        val server = try {
-            runSseMcpServer(port = port, wait = false)
-        } catch (e: IOException) {
-            // Try next port
-            port += 1
-            runSseMcpServer(port = port, wait = false)
-        }
+        val (server, port) = startServer()
+        val integration = HttpMcpIntegration(
+            "test",
+            impl,
+            buildUrl(port, true),
+            HttpMcpProtocol.Sse,
+        )
 
         try {
-            val integration = HttpMcpIntegration(
-                "test",
-                impl,
-                buildUrl(port, true),
-                HttpMcpProtocol.Sse
-            )
-            val tools = try {
-                runBlocking(Dispatchers.IO) {
+            val tools = runBlocking(Dispatchers.IO) {
+                withTimeout(15.seconds) {
+                    integration.connect()
                     integration.listTools()
                 }
-            } catch (e: StreamableHttpError) {
-                throw IOException("Request failed, code = ${e.code}", e)
             }
-            assert(tools.isNotEmpty())
+            assertTrue(tools.isNotEmpty())
         } finally {
-            server.stop(100, 300)
+            try {
+                runBlocking {
+                    withTimeout(5.seconds) {
+                        integration.close()
+                    }
+                }
+            } finally {
+                server.stop(100, 300)
+            }
         }
     }
 
     // The test server advertises only the tools capability, so it stands in for any MCP
     // server that doesn't support prompts: listPrompts must return empty, not throw.
-    @Ignore
     @Test
     fun listPromptsEmptyWhenServerLacksPromptsCapability() {
-        var port = initialPort
-        val server = try {
-            runSseMcpServer(port = port, wait = false)
-        } catch (e: IOException) {
-            port += 1
-            runSseMcpServer(port = port, wait = false)
-        }
+        val (server, port) = startServer()
+        val integration = HttpMcpIntegration(
+            "test",
+            impl,
+            buildUrl(port, true),
+            HttpMcpProtocol.Sse,
+        )
 
         try {
-            val integration = HttpMcpIntegration(
-                "test",
-                impl,
-                buildUrl(port, true),
-                HttpMcpProtocol.Sse
-            )
             val prompts = runBlocking(Dispatchers.IO) {
-                integration.connect()
-                integration.listPrompts()
+                withTimeout(15.seconds) {
+                    integration.connect()
+                    integration.listPrompts()
+                }
             }
-            assert(prompts.isEmpty())
+            assertTrue(prompts.isEmpty())
         } finally {
-            server.stop(100, 300)
+            try {
+                runBlocking {
+                    withTimeout(5.seconds) {
+                        integration.close()
+                    }
+                }
+            } finally {
+                server.stop(100, 300)
+            }
         }
     }
 }
