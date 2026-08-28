@@ -4,7 +4,6 @@ import CoreAppVersion
 import PlatformContext
 import PlatformShareLauncher
 import android.content.Context
-import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import coredevices.analytics.createAndroidAnalytics
 import coredevices.coreapp.PebbleBackgroundManager
 import coredevices.coreapp.appVersionName
@@ -56,7 +55,6 @@ val androidDefaultModule = module {
     singleOf(::AndroidPlatform) bind Platform::class
     singleOf(::AndroidOAuthLauncher) bind OAuthLauncher::class
     single { CoreAppVersion(get<Context>().appVersionName) }
-    factory { AppUpdateManagerFactory.create(get()) }
     singleOf(::PlatformContext)
     singleOf(::AndroidPermissionRequester) bind PermissionRequester::class
     singleOf(::AndroidCompanionDevice) bind CompanionDevice::class
