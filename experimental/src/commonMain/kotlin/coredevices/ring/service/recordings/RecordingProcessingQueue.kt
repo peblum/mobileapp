@@ -39,9 +39,11 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -61,6 +63,11 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
+private fun firebaseAuthenticationState(): Flow<Boolean> = flow {
+    emit(Firebase.auth.currentUser != null)
+    Firebase.auth.authStateChanged.collect { emit(it != null) }
+}
+
 class RecordingProcessingQueue(
     private val recordingStorage: RecordingStorage,
     private val transferRepository: RingTransferRepository,
@@ -72,6 +79,7 @@ class RecordingProcessingQueue(
     private val trace: RingTraceSession,
     rescheduleDelay: Duration = 1.minutes,
     maxConcurrency: Int = 20,
+    authenticationState: Flow<Boolean> = firebaseAuthenticationState(),
 ): KoinComponent, PersistentQueueScheduler<RecordingProcessingTask>(
     repository = queueTaskRepository,
     scope = scope,
@@ -227,12 +235,9 @@ class RecordingProcessingQueue(
         // eagerly at app start. flatMapLatest cancels the inner snapshot
         // listener on sign-out and resubscribes on sign-in.
         @OptIn(ExperimentalCoroutinesApi::class)
-        flow {
-            emit(Firebase.auth.currentUser)
-            Firebase.auth.authStateChanged.collect { emit(it) }
-        }.flatMapLatest { user ->
+        authenticationState.flatMapLatest { authenticated ->
             val firestoreRecordingsDao: FirestoreRecordingsDao = get()
-            if (user == null) flow<QuerySnapshot> {} else firestoreRecordingsDao.changesFlow()
+            if (authenticated) firestoreRecordingsDao.changesFlow() else emptyFlow<QuerySnapshot>()
         }.onEach { snap ->
             if (!preferences.backupEnabled.value) return@onEach
             // Walk every doc in the snapshot. ingestRemoteRecording

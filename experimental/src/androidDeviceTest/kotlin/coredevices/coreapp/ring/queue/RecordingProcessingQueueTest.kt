@@ -1,9 +1,16 @@
 package coredevices.coreapp.ring.queue
 
+import PlatformUiContext
 import android.content.Context
 import android.os.Build
 import androidx.room.Room
+import androidx.room.RoomDatabase
 import androidx.test.platform.app.InstrumentationRegistry
+import com.russhwolf.settings.SharedPreferencesSettings
+import com.russhwolf.settings.Settings
+import coredevices.HackyPermissionRequesterProvider
+import coredevices.firestore.PebbleUser
+import coredevices.firestore.UsersDao
 import coredevices.indexai.agent.ServletRepository
 import coredevices.indexai.data.McpServerDefinition
 import coredevices.indexai.data.entity.MessageRole
@@ -13,14 +20,23 @@ import coredevices.indexai.database.dao.RecordingEntryDao
 import coredevices.mcp.client.McpIntegration
 import coredevices.ring.agent.AgentFactory
 import coredevices.ring.agent.IndexAgentNenya
+import coredevices.ring.agent.LLMLocationProvider
 import coredevices.ring.agent.SearchAgentNenya
 import coredevices.ring.agent.BuiltinServletRepository
 import coredevices.ring.agent.McpSessionFactory
+import coredevices.ring.agent.builtin_servlets.notes.CreateNoteTool
+import coredevices.ring.agent.builtin_servlets.notes.NoteIntegrationFactory
 import coredevices.ring.agent.builtin_servlets.notes.NoteProvider
+import coredevices.ring.agent.builtin_servlets.notes.NoteServlet
 import coredevices.ring.agent.builtin_servlets.reminders.ReminderProvider
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigFlow
+import coredevices.util.Permission
+import coredevices.util.PermissionRequester
+import coredevices.util.PermissionResult
 import coredevices.util.Platform
+import coredevices.util.RequiredPermissions
+import coredevices.util.AppResumed
 import coredevices.ring.api.NenyaClient
 import coredevices.ring.data.NoteShortcutType
 import coredevices.ring.data.entity.room.CachedRecordingMetadata
@@ -28,8 +44,10 @@ import coredevices.ring.database.MusicControlMode
 import coredevices.ring.agent.builtin_servlets.messaging.ApprovedBeeperContact
 import coredevices.ring.database.Preferences
 import coredevices.ring.database.SecondaryMode
+import coredevices.ring.database.firestore.dao.FirestoreRecordingsDao
 import coredevices.ring.database.room.RingDatabase
 import coredevices.ring.database.room.dao.RecordingProcessingTaskDao
+import coredevices.ring.database.room.repository.ItemRepository
 import coredevices.ring.database.room.repository.McpSandboxRepository
 import coredevices.ring.database.room.repository.RecordingProcessingTaskRepository
 import coredevices.ring.database.room.repository.RecordingRepository
@@ -41,6 +59,7 @@ import coredevices.ring.service.recordings.RecordingPreprocessor
 import coredevices.ring.service.recordings.RecordingProcessingQueue
 import coredevices.ring.service.recordings.RecordingProcessor
 import coredevices.ring.service.recordings.button.RecordingOperationFactory
+import coredevices.ring.service.indexfeed.ItemFactory
 import coredevices.ring.encryption.DocumentEncryptor
 import coredevices.ring.encryption.EncryptionKeyManager
 import coredevices.ring.storage.RealRecordingStorage
@@ -50,14 +69,20 @@ import coredevices.ring.agent.LlmMode
 import coredevices.util.models.CactusSTTMode
 import coredevices.util.queue.TaskStatus
 import coredevices.util.transcription.TranscriptionService
+import io.rebble.libpebblecommon.util.GeolocationPositionResult
+import io.rebble.libpebblecommon.util.SystemGeolocation
 import kotlinx.coroutines.CompletableJob
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -75,6 +100,7 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 import java.io.File
 import kotlin.collections.emptyList
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -133,7 +159,13 @@ class FakePreferences : Preferences {
 }
 
 class FakeServletRepository : ServletRepository {
-    override fun getAllServlets(): List<McpServerDefinition> = emptyList()
+    override fun getAllServlets(): List<McpServerDefinition> = listOf(
+        McpServerDefinition(
+            name = NoteServlet.NAME,
+            title = "Note Creation",
+        ),
+    )
+
     override fun resolveName(name: String): McpIntegration? = null
 }
 
@@ -149,10 +181,12 @@ class RecordingProcessingQueueTest {
     private lateinit var fakeNenya: FakeNenyaClient
     private lateinit var fakeTranscription: FakeTranscriptionService
     private lateinit var bgScopeJob: CompletableJob
+    private lateinit var settingsName: String
 
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext
+        settingsName = "recording_processing_queue_test_${System.nanoTime()}"
         stopKoin()
 
         fakeNenya = FakeNenyaClient()
@@ -179,12 +213,15 @@ class RecordingProcessingQueueTest {
 
     @After
     fun tearDown() {
-        queue.close()
-        bgScopeJob.cancel()
-        db.close()
+        if (::queue.isInitialized) queue.close()
+        if (::bgScopeJob.isInitialized) runBlocking { bgScopeJob.cancelAndJoin() }
+        if (::db.isInitialized) db.close()
         stopKoin()
         // Clean up fake audio files
-        File(context.cacheDir, "recordings").deleteRecursively()
+        if (::context.isInitialized) {
+            File(context.cacheDir, "recordings").deleteRecursively()
+            if (::settingsName.isInitialized) context.deleteSharedPreferences(settingsName)
+        }
     }
 
     private fun createTestModule() = module {
@@ -193,7 +230,7 @@ class RecordingProcessingQueueTest {
                 .fallbackToDestructiveMigrationOnDowngrade(true)
                 .setQueryCoroutineContext(Dispatchers.IO)
                 .build()
-        }
+        } bind RoomDatabase::class
 
         // DAOs
         single { get<RingDatabase>().localReminderDao() }
@@ -210,12 +247,24 @@ class RecordingProcessingQueueTest {
         single { get<RingDatabase>().recordingProcessingTaskDao() }
         single { get<RingDatabase>().traceSessionDao() }
         single { get<RingDatabase>().traceEntryDao() }
+        single { get<RingDatabase>().cachedItemDao() }
 
         // Repositories
         singleOf(::RecordingProcessingTaskRepository)
         singleOf(::RecordingRepository)
         singleOf(::RingTransferRepository)
         singleOf(::McpSandboxRepository)
+        single {
+            ItemRepository(
+                cacheDao = get(),
+                cancelReminder = {},
+            )
+        }
+        single {
+            FirestoreRecordingsDao {
+                error("Firestore is not used by RecordingProcessingQueueTest")
+            }
+        }
         single { EncryptionKeyManager(context.applicationContext) }
         singleOf(::DocumentEncryptor)
         singleOf(::RealRecordingStorage) bind RecordingStorage::class
@@ -226,6 +275,23 @@ class RecordingProcessingQueueTest {
         single<TranscriptionService> { fakeTranscription }
         single<Preferences> { FakePreferences() }
         single<ServletRepository> { FakeServletRepository() }
+        single<UsersDao> {
+            object : UsersDao {
+                override val user = flowOf<PebbleUser?>(null)
+                override val loginEvents: Flow<PebbleUser> = emptyFlow()
+
+                override suspend fun updateTodoBlockId(todoBlockId: String) {}
+                override suspend fun initUserDevToken(rebbleUserToken: String?) {}
+                override suspend fun updateLastConnectedWatch(serial: String) {}
+                override suspend fun updateRingLifetimeCollectionCount(serial: String, count: Int) {}
+                override fun init() {}
+            }
+        }
+        single<Settings> {
+            SharedPreferencesSettings(
+                context.getSharedPreferences(settingsName, Context.MODE_PRIVATE),
+            )
+        }
         single<Platform> {
             object : Platform {
                 override val name = "Android"
@@ -235,10 +301,42 @@ class RecordingProcessingQueueTest {
                 override suspend fun runWithBgTask(name: String, task: suspend () -> Unit) { task() }
             }
         }
-        // Real BuiltinServletRepository needed by McpSessionFactory (never actually resolves tools
-        // because FakeServletRepository
-        // seeds no builtins)
+        // McpSandboxRepository seeds only the note integration exposed by FakeServletRepository;
+        // McpSessionFactory resolves that name through the real built-in repository.
         single { BuiltinServletRepository() }
+        single { NoteIntegrationFactory(get(), get()) }
+        factory { CreateNoteTool(get()) }
+
+        single<PermissionRequester> {
+            object : PermissionRequester(
+                RequiredPermissions(flowOf(emptySet())),
+                AppResumed(),
+            ) {
+                override suspend fun requestPlatformPermission(
+                    permission: Permission,
+                    uiContext: PlatformUiContext,
+                ) = PermissionResult.Rejected
+
+                override suspend fun hasPermission(permission: Permission) = false
+                override fun openPermissionsScreen(uiContext: PlatformUiContext) {}
+            }
+        }
+        single { HackyPermissionRequesterProvider { get() } }
+        single<SystemGeolocation> {
+            object : SystemGeolocation {
+                override suspend fun getCurrentPosition(
+                    maximumAge: Duration?,
+                    timeout: Duration?,
+                    highAccuracy: Boolean,
+                ): GeolocationPositionResult = error("Location is disabled in this test")
+
+                override suspend fun watchPosition(
+                    interval: Duration,
+                    highAccuracy: Boolean,
+                ): Flow<GeolocationPositionResult> = emptyFlow()
+            }
+        }
+        singleOf(::LLMLocationProvider)
 
         // Agent (uses FakeNenyaClient via Koin)
         factory { p -> IndexAgentNenya(get(), p.getOrNull() ?: emptyList()) }
@@ -264,12 +362,26 @@ class RecordingProcessingQueueTest {
         single { CoreConfigFlow(MutableStateFlow(CoreConfig())) }
 
         singleOf(::RecordingOperationFactory)
+        singleOf(::ItemFactory)
         singleOf(::RecordingProcessor)
         singleOf(::RecordingPreprocessor)
 
         // Background scope with short reschedule delay
         single { RecordingBackgroundScope(CoroutineScope(Dispatchers.Default + bgScopeJob)) }
-        single { RecordingProcessingQueue(get(), get(), get(), get(), get(), get(), get(), get(), rescheduleDelay = 100.milliseconds) }
+        single {
+            RecordingProcessingQueue(
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                get(),
+                rescheduleDelay = 100.milliseconds,
+                authenticationState = emptyFlow(),
+            )
+        }
     }
 
     private fun createFakeAudioFile(fileId: String) {
@@ -292,9 +404,8 @@ class RecordingProcessingQueueTest {
 
     private suspend fun awaitAttempts(taskId: Long, minAttempts: Int, timeout: kotlin.time.Duration = 15.seconds) {
         withTimeout(timeout) {
-            queue.activeTaskIds.first { taskId in it }
-            queue.activeTaskIds.first { taskId !in it } // Wait for task to finish processing attempt
             taskDao.getTaskByIdFlow(taskId).first { it != null && it.attempts >= minAttempts }
+            queue.activeTaskIds.first { taskId !in it }
         }
     }
 
@@ -313,7 +424,8 @@ class RecordingProcessingQueueTest {
             scope = RecordingBackgroundScope(CoroutineScope(Dispatchers.Default + bgScopeJob)),
             recordingPreprocessor = koin.get(),
             trace = koin.get(),
-            rescheduleDelay = rescheduleDelay
+            rescheduleDelay = rescheduleDelay,
+            authenticationState = emptyFlow(),
         )
     }
 
@@ -321,11 +433,11 @@ class RecordingProcessingQueueTest {
      * Simulates an app restart by closing the current queue, cancelling the scope, and creating
      * an entirely new queue object backed by the same database.
      */
-    private fun simulateRestart() {
+    private suspend fun replaceQueue(rescheduleDelay: kotlin.time.Duration = 100.milliseconds) {
         queue.close()
-        bgScopeJob.cancel()
+        bgScopeJob.cancelAndJoin()
         bgScopeJob = SupervisorJob()
-        queue = createQueue()
+        queue = createQueue(rescheduleDelay)
     }
 
     // ---- Test Cases ----
@@ -360,6 +472,10 @@ class RecordingProcessingQueueTest {
             "Expected assistant message",
             messages.any { it.document.role == MessageRole.assistant }
         )
+
+        val notes = db.cachedItemDao().getAllActive()
+        assertEquals(1, notes.size)
+        assertEquals("Remember to buy groceries", notes.single().title)
     }
 
     @Test
@@ -539,10 +655,7 @@ class RecordingProcessingQueueTest {
     fun textProcessing_resumeAfterRestart_succeeds() = runBlocking {
         // Use a queue with a long retry delay so the automatic retry doesn't fire
         // before we can simulate the restart
-        queue.close()
-        bgScopeJob.cancel()
-        bgScopeJob = SupervisorJob()
-        queue = createQueue(rescheduleDelay = 60.seconds)
+        replaceQueue(rescheduleDelay = 60.seconds)
 
         // First attempt: agent network error → RecoverableTaskException → task stays Pending
         fakeNenya.enqueue(
@@ -558,7 +671,7 @@ class RecordingProcessingQueueTest {
         assertEquals(TaskStatus.Pending, taskBeforeRestart.status)
 
         // Simulate app restart: destroy old queue, create a completely new one
-        simulateRestart()
+        replaceQueue()
 
         // Set up agent for the resumed attempt
         fakeNenya.enqueue(
@@ -585,10 +698,7 @@ class RecordingProcessingQueueTest {
         createFakeAudioFile(fileId)
 
         // Use a queue with a long retry delay
-        queue.close()
-        bgScopeJob.cancel()
-        bgScopeJob = SupervisorJob()
-        queue = createQueue(rescheduleDelay = 60.seconds)
+        replaceQueue(rescheduleDelay = 60.seconds)
 
         // First attempt: transcription network error → RecoverableTaskException
         fakeTranscription.enqueue(FakeTranscriptionService.Behavior.NetworkError)
@@ -600,7 +710,7 @@ class RecordingProcessingQueueTest {
         assertEquals(TaskStatus.Pending, taskDao.getTaskById(1)!!.status)
 
         // Simulate app restart
-        simulateRestart()
+        replaceQueue()
 
         // Set up for successful retry after restart
         fakeTranscription.enqueue(FakeTranscriptionService.Behavior.Success("Restarted transcription"))
@@ -639,7 +749,7 @@ class RecordingProcessingQueueTest {
         val attemptsBefore = taskBefore.attempts
 
         // Simulate app restart
-        simulateRestart()
+        replaceQueue()
         queue.resumePendingTasks()
 
         // Wait to confirm no reprocessing occurs

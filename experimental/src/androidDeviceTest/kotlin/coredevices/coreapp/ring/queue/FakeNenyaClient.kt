@@ -61,7 +61,7 @@ class FakeNenyaClient : NenyaClient {
                                     id = "call_${responseQueue.size}",
                                     type = "function",
                                     function = FunctionToolCall(
-                                        name = "notes.create_note",
+                                        name = "builtin_note__create_note",
                                         arguments = """{"text":"test note"}"""
                                     )
                                 )
