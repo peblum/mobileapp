@@ -82,6 +82,9 @@ android {
     androidResources {
         noCompress += "zip"
     }
+    if (fdroidBuild) {
+        androidResources.ignoreAssetsPatterns.add("needle-pebble-ft-cq4.zip")
+    }
     buildTypes {
         getByName("release") {
             isMinifyEnabled = true
@@ -232,7 +235,7 @@ androidComponents {
             it.versionCode.set(gitVersionCode)
             it.versionName.set(gitVersionName)
         }
-        if (bundleSpeechModels) {
+        if (bundleSpeechModels && !fdroidBuild) {
             variant.sources.assets?.addGeneratedSourceDirectory(bundledSpeechModels, BundleSpeechModels::assetsDir)
         }
     }
