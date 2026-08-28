@@ -71,27 +71,8 @@ jobs:
           key: android-fdroid-deps-${{ runner.os }}-${{ hashFiles('gradle/**', 'gradlew*', 'gradle.properties', '*.gradle*') }}
           restore-keys: |
             android-fdroid-deps-${{ runner.os }}-
-      - name: Prepare F-Droid source
-        run: |
-          git apply --check --whitespace=error-all docs/fdroid-scanner.patch
-          git apply --whitespace=error-all docs/fdroid-scanner.patch
-          rm -- \
-            cactus-native/src/main/jniLibs/arm64-v8a/libcactus_engine.so \
-            cactus/src/commonMain/resources/ios/lib/ios-arm64-simulator/libcactus_engine.a \
-            cactus/src/commonMain/resources/ios/lib/ios-arm64-simulator/libcurl.a \
-            cactus/src/commonMain/resources/ios/lib/ios-arm64/libcactus_engine.a \
-            cactus/src/commonMain/resources/ios/lib/ios-arm64/libcurl.a \
-            models/needle-pebble-ft-cq4.zip \
-            composeApp/src/androidMain/assets/models/needle-pebble-ft-cq4.zip
       - name: Build and Test
-        run: >-
-          ./gradlew --continue -PfdroidBuild=true
-          :androidApp:assembleDebug
-          :androidApp:assembleRelease
-          testDebugUnitTest
-          testAndroidHostTest
-          jvmTest
-          lint
+        run: scripts/ci/build-fdroid-apks.sh store
 
   android-instrumented:
     name: Android instrumented tests (F-Droid)
@@ -118,17 +99,7 @@ jobs:
           restore-keys: |
             android-instrumented-deps-${{ runner.os }}-
       - name: Prepare F-Droid source
-        run: |
-          git apply --check --whitespace=error-all docs/fdroid-scanner.patch
-          git apply --whitespace=error-all docs/fdroid-scanner.patch
-          rm -- \
-            cactus-native/src/main/jniLibs/arm64-v8a/libcactus_engine.so \
-            cactus/src/commonMain/resources/ios/lib/ios-arm64-simulator/libcactus_engine.a \
-            cactus/src/commonMain/resources/ios/lib/ios-arm64-simulator/libcurl.a \
-            cactus/src/commonMain/resources/ios/lib/ios-arm64/libcactus_engine.a \
-            cactus/src/commonMain/resources/ios/lib/ios-arm64/libcurl.a \
-            models/needle-pebble-ft-cq4.zip \
-            composeApp/src/androidMain/assets/models/needle-pebble-ft-cq4.zip
+        run: scripts/ci/prepare-fdroid-source.sh
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
