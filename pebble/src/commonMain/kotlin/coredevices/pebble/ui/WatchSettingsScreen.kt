@@ -1304,7 +1304,13 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                 ),
                 basicSettingsToggleItem(
                     title = "Enable Weather",
-                    description = "Fetch weather for the current location, for the Weather App (requires location permission)",
+                    description = if (CommonBuildKonfig.FDROID_BUILD) {
+                        "Send location coordinates to weather-api.repebble.com for forecasts. " +
+                            "Current Location requires location permission."
+                    } else {
+                        "Fetch weather for the current location, for the Weather App " +
+                            "(requires location permission)"
+                    },
                     topLevelType = TopLevelType.Phone,
                     section = Section.Weather,
                     checked = coreConfig.fetchWeather,
@@ -1976,7 +1982,14 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                 ),
                 basicSettingsToggleItem(
                     title = "Use Pebble Weather Service when apps are broken",
-                    description = "If old apps are using a broken weather API, attempt to use the Pebble Weather Service instead (will only work for some apps which use OpenWeather API)",
+                    description = if (CommonBuildKonfig.FDROID_BUILD) {
+                        "Opt in to proxy weather requests from watch apps. Coordinates may be " +
+                            "sent to weather-api.repebble.com or api.openweathermap.org."
+                    } else {
+                        "If old apps are using a broken weather API, attempt to use the Pebble " +
+                            "Weather Service instead (will only work for some apps which use " +
+                            "OpenWeather API)"
+                    },
                     topLevelType = TopLevelType.Phone,
                     section = Section.Apps,
                     checked = coreConfig.interceptPKJSWeather,
