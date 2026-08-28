@@ -1,0 +1,148 @@
+name: APK / pull request
+
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - opened
+      - synchronize
+      - reopened
+  workflow_dispatch:
+
+concurrency:
+  # Forgejo defines github as an alias of its native context.
+  group: apk-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test free APKs
+    runs-on: [native, android-untrusted]
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build and test F-Droid variants
+        run: |
+          set -euo pipefail
+          gradle_home=$(mktemp -d)
+          trap 'rm -rf -- "$gradle_home"' EXIT
+          env \
+            -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RUNTIME_TOKEN \
+            -u FORGEJO_TOKEN \
+            -u GITHUB_TOKEN \
+            GRADLE_USER_HOME="$gradle_home" \
+            nix develop --command scripts/ci/build-fdroid-apks.sh forgejo
+
+      - name: Collect and verify APKs
+        run: |
+          set -euo pipefail
+          env \
+            -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RUNTIME_TOKEN \
+            -u FORGEJO_TOKEN \
+            -u GITHUB_TOKEN \
+            nix develop --command \
+            bash <<'SCRIPT'
+          set -euo pipefail
+          revision=$(git rev-parse HEAD)
+          short_revision=${revision:0:12}
+          if [[ "$FORGEJO_EVENT_NAME" == "pull_request" ]]; then
+            pull_number=$(jq -er '.number' "$FORGEJO_EVENT_PATH")
+            build_label="pr-$pull_number"
+          else
+            build_label="manual-$FORGEJO_RUN_NUMBER"
+          fi
+
+          ci_apk="Pebble-ci-$build_label-$short_revision.apk"
+          nightly_apk="Pebble-nightly-$build_label-$short_revision-unsigned.apk"
+          scripts/ci/collect-apks.sh \
+            --variant ci \
+            --output-dir dist/ci \
+            --apk-name "$ci_apk"
+          scripts/ci/collect-apks.sh \
+            --variant nightly \
+            --output-dir dist/nightly \
+            --apk-name "$nightly_apk"
+
+          (
+            cd dist/ci
+            sha256sum --check SHA256SUMS
+          )
+          (
+            cd dist/nightly
+            sha256sum --check SHA256SUMS
+          )
+          [[ "$(jq -er '.android.variant' dist/ci/build-manifest.json)" == "ci" ]]
+          [[ "$(jq -er '.android.variant' dist/nightly/build-manifest.json)" == \
+            "nightly" ]]
+          [[ "$(apkanalyzer manifest application-id "dist/ci/$ci_apk")" == \
+            "coredevices.coreapp.ci" ]]
+          [[ "$(aapt2 dump packagename "dist/ci/$ci_apk")" == \
+            "coredevices.coreapp.ci" ]]
+          [[ "$(apkanalyzer manifest application-id "dist/nightly/$nightly_apk")" == \
+            "coredevices.coreapp.nightly" ]]
+          [[ "$(aapt2 dump packagename "dist/nightly/$nightly_apk")" == \
+            "coredevices.coreapp.nightly" ]]
+
+          assert_isolated_manifest() {
+            local apk=$1
+            local application_id=$2
+            local manifest_xml
+            local permission
+            manifest_xml=$(apkanalyzer manifest print "$apk")
+
+            for permission in \
+              io.rebble.pebblekit2.permission.SEND_DATA_TO_WATCH \
+              io.rebble.pebblekit2.permission.RECEIVE_DATA_FROM_WATCH \
+              io.rebble.pebblekit2.permission.READ_PROVIDER; do
+              [[ "$(xmllint --nonet --xpath \
+                "count(/*[local-name()='manifest']/*[local-name()='permission'][@*[local-name()='name']='$permission'])" \
+                - <<<"$manifest_xml")" == "0" ]]
+            done
+
+            [[ "$(xmllint --nonet --xpath \
+              "count(//*[local-name()='provider'][@*[local-name()='name']='io.rebble.libpebblecommon.pebblekit.classic.PebbleKitProvider' and @*[local-name()='authorities']='$application_id.provider.basalt' and @*[local-name()='enabled']='false'])" \
+              - <<<"$manifest_xml")" == "1" ]]
+          }
+          assert_isolated_manifest "dist/ci/$ci_apk" "coredevices.coreapp.ci"
+          assert_isolated_manifest \
+            "dist/nightly/$nightly_apk" \
+            "coredevices.coreapp.nightly"
+
+          apksigner verify --verbose "dist/ci/$ci_apk"
+          if apksigner verify "dist/nightly/$nightly_apk" >/dev/null 2>&1; then
+            echo "Nightly input must remain unsigned" >&2
+            exit 1
+          fi
+          zipalign -c -P 16 4 "dist/ci/$ci_apk"
+          zipalign -c -P 16 4 "dist/nightly/$nightly_apk"
+          SCRIPT
+
+      - name: Upload APKs
+        uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e # Forgejo-patched v4
+        with:
+          name: pebble-pr-${{ github.event.pull_request.number || github.run_number }}-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload reports after failure
+        if: failure()
+        uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e # Forgejo-patched v4
+        with:
+          name: pebble-pr-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            **/build/reports/
+            **/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
