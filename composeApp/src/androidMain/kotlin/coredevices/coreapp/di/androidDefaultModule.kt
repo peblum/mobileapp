@@ -36,13 +36,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
-import org.koin.dsl.binds
 import org.koin.dsl.module
 import kotlin.time.Duration
 import kotlin.time.toJavaDuration
 
 val androidDefaultModule = module {
-    singleOf(::RealGoogleAuthUtil) binds arrayOf(GoogleAuthUtil::class, SilentSignIn::class)
+    singleOf(::RealGoogleAuthUtil) bind GoogleAuthUtil::class
+    single<SilentSignIn> { get<RealGoogleAuthUtil>() }
     singleOf(::RealAppleAuthUtil) bind AppleAuthUtil::class
     singleOf(::RealGithubAuthUtil) bind GitHubAuthUtil::class
     factory { params ->

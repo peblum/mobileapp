@@ -85,6 +85,7 @@ import coredevices.pebble.services.SettingsPageState
 import coredevices.pebble.services.isPebbleFeed
 import coredevices.ui.ConfirmDialog
 import coredevices.ui.PebbleElevatedButton
+import coredevices.util.cloudAccountAuthEnabled
 import io.ktor.http.URLProtocol
 import io.ktor.http.parseUrl
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
@@ -736,7 +737,8 @@ fun LockerAppScreen(topBarParams: TopBarParams, uuid: Uuid?, navBarNav: NavBarNa
                     if (
                         commonAppStore?.contactable == true &&
                         commonAppStore.storeSource.isPebbleFeed() &&
-                        contactStoreId != null
+                        contactStoreId != null &&
+                        cloudAccountAuthEnabled()
                     ) {
                         PropertyRow(
                             name = "CONTACT DEVELOPER",

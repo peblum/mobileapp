@@ -157,6 +157,7 @@ import coredevices.util.Permission
 import coredevices.util.PermissionRequester
 import coredevices.util.PermissionResult
 import coredevices.util.Platform
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.isIOS
 import coredevices.util.rememberUiContext
 import io.rebble.libpebblecommon.connection.ActiveDevice
@@ -1349,7 +1350,7 @@ fun WatchMenu(watch: PebbleDevice, navBarNav: NavBarNav) {
                     }
                 )
 
-                if (watch.watchInfo.platform.isCoreDevice()) {
+                if (watch.watchInfo.platform.isCoreDevice() && cloudAccountAuthEnabled()) {
                     DropdownMenuItem(
                         text = { Text("Battery Life") },
                         leadingIcon = {

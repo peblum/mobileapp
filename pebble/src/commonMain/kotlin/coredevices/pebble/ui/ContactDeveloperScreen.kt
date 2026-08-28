@@ -52,6 +52,7 @@ import coredevices.pebble.services.ContactDeveloperApi
 import coredevices.pebble.services.ContactResult
 import coredevices.ui.SignInDialog
 import coredevices.util.Platform
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.isIOS
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.auth.auth
@@ -77,6 +78,7 @@ fun ContactDeveloperScreen(
     val platform = koinInject<Platform>()
     val scope = rememberCoroutineScope()
     val logger = remember { Logger.withTag("ContactDeveloperScreen") }
+    val cloudAuthEnabled = cloudAccountAuthEnabled()
 
     val signedIn by Firebase.auth.authStateChanged
         .map { it != null }
@@ -159,7 +161,7 @@ fun ContactDeveloperScreen(
         }
     }
 
-    if (showSignInDialog) {
+    if (showSignInDialog && cloudAuthEnabled) {
         SignInDialog(onDismiss = { showSignInDialog = false })
     }
 
@@ -199,6 +201,15 @@ fun ContactDeveloperScreen(
                 Spacer(Modifier.height(12.dp))
 
                 when {
+                    !cloudAuthEnabled -> {
+                        Text(
+                            "The account-backed developer contact service is unavailable in " +
+                                "this build. Use the developer website or source-code link when " +
+                                "one is listed for the app.",
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+
                     sent -> {
                         Text(
                             "Message sent. The developer will receive an email and may reply to you directly.",

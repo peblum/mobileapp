@@ -59,6 +59,7 @@ import coredevices.util.CommonBuildKonfig
 import coredevices.util.DoneInitialOnboarding
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.name
 import coredevices.util.rememberUiContext
 import coredevices.util.requestIsFullScreen
@@ -222,7 +223,11 @@ fun OnboardingScreen(
                         }
                         logger.v { "permissionToRequest = $permissionToRequest  /  missingPermissions = $missingPermissions " }
                         if (permissionToRequest == null) {
-                            viewModel.stage.value = OnboardingStage.SignIn
+                            viewModel.stage.value = if (cloudAccountAuthEnabled()) {
+                                OnboardingStage.SignIn
+                            } else {
+                                OnboardingStage.Done
+                            }
                         } else {
                             val warnBeforeFullScreenRequest = permissionToRequest.requestIsFullScreen()
                             LaunchedEffect(permissionToRequest) {
@@ -271,6 +276,12 @@ fun OnboardingScreen(
                 }
 
                 OnboardingStage.SignIn -> {
+                    if (!cloudAccountAuthEnabled()) {
+                        LaunchedEffect(Unit) {
+                            viewModel.stage.value = OnboardingStage.Done
+                        }
+                        return@Scaffold
+                    }
                     val coreConfig by viewModel.coreConfig.collectAsState()
                     Column(
                         modifier = Modifier.fillMaxSize().padding(20.dp),

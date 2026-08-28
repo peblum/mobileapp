@@ -139,6 +139,7 @@ import coredevices.util.Permission
 import coredevices.util.PermissionRequester
 import coredevices.util.STTConfig
 import coredevices.util.WeatherUnit
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.emailOrNull
 import coredevices.util.models.CactusSTTMode
 import coredevices.util.models.ModelDownloadStatus
@@ -609,6 +610,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     action = {
                         nav.navigateTo(CommonRoutes.ViewMyBugReportsRoute)
                     },
+                    show = { cloudAccountAuthEnabled() },
                 ) },
                 navBarNav?.let { nav -> basicSettingsActionItem(
                     title = "Configure Appstore Sources",
@@ -1916,7 +1918,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     topLevelType = TopLevelType.Phone,
                     section = Section.General,
                     action = { showSignInDialog = true },
-                    show = { coreUser == null },
+                    show = { coreUser == null && cloudAccountAuthEnabled() },
                 ),
                 basicSettingsActionItem(
                     title = "Sign Out - Rebble",

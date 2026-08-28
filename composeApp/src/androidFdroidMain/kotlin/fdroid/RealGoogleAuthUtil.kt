@@ -5,12 +5,13 @@ import android.content.Context
 import co.touchlab.kermit.Logger
 import com.russhwolf.settings.Settings
 import coredevices.util.auth.GoogleAuthUtil
+import coredevices.util.auth.SilentSignIn
 import dev.gitlive.firebase.auth.AuthCredential
 
 actual class RealGoogleAuthUtil(
     private val appContext: Context,
     private val settings: Settings,
-) : GoogleAuthUtil {
+) : GoogleAuthUtil, SilentSignIn {
     companion object {
         private val logger = Logger.withTag(RealGoogleAuthUtil::class.simpleName!!)
     }
@@ -26,4 +27,6 @@ actual class RealGoogleAuthUtil(
     }
 
     override suspend fun getAccessToken(scopes: List<String>): String? = null
+
+    override suspend fun attempt(): Boolean = false
 }

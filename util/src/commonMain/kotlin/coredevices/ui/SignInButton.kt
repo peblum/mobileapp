@@ -28,6 +28,7 @@ import coredevices.analytics.AnalyticsBackend
 import coredevices.analytics.setUser
 import coredevices.firestore.KEY_LAST_SIGN_IN_PROVIDERS
 import coredevices.util.CommonBuildKonfig
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.auth.AppleAuthUtil
 import coredevices.util.auth.GitHubAuthUtil
 import coredevices.util.auth.GoogleAuthUtil
@@ -231,6 +232,19 @@ fun SignInButtons(
     primaryColor: Boolean,
     skipAccountSwitchConfirmation: Boolean = false,
 ) {
+    if (!cloudAccountAuthEnabled()) {
+        Text(
+            text = "Account sign-in is unavailable in this build.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        )
+        return
+    }
+
     val koin = currentKoinScope()
     var error by remember { mutableStateOf<String?>(null) }
 
