@@ -169,6 +169,7 @@ import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDeviceInRecovery
 import io.rebble.libpebblecommon.connection.ConnectingPebbleDevice
 import io.rebble.libpebblecommon.connection.ConnectionFailureReason
+import io.rebble.libpebblecommon.connection.ConnectedWatchInfo
 import io.rebble.libpebblecommon.connection.DisconnectingPebbleDevice
 import io.rebble.libpebblecommon.connection.DiscoveredPebbleDevice
 import io.rebble.libpebblecommon.connection.FirmwareUpdateCheckResult
@@ -181,6 +182,7 @@ import io.rebble.libpebblecommon.connection.endpointmanager.FirmwareUpdateErrorS
 import io.rebble.libpebblecommon.connection.endpointmanager.FirmwareUpdater
 import io.rebble.libpebblecommon.connection.endpointmanager.LanguagePackInstallState
 import io.rebble.libpebblecommon.database.entity.buildTimelineNotification
+import io.rebble.libpebblecommon.metadata.WatchHardwarePlatform
 import io.rebble.libpebblecommon.packets.blobdb.TimelineIcon
 import io.rebble.libpebblecommon.packets.blobdb.TimelineItem
 import io.rebble.libpebblecommon.services.blobdb.TimelineActionResult
@@ -1240,6 +1242,14 @@ fun WatchMenu(watch: PebbleDevice, navBarNav: NavBarNav) {
     val showConfirmResetIntoPrfDialog = remember { mutableStateOf(false) }
     val showConfirmFactoryResetDialog = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val firmwareUpdatePlatform =
+        (watch as? ConnectedWatchInfo)?.watchInfo?.platform
+            ?: WatchHardwarePlatform.UNKNOWN
+    val requestFirmwareUpdateCheckConsent =
+        rememberFirmwareUpdateCheckConsentRequester(
+            platform = firmwareUpdatePlatform,
+            requestKey = watch.identifier to (watch is ConnectedPebble.Firmware),
+        )
 
     Box {
         IconButton(onClick = { showMenu = !showMenu }) {
@@ -1307,7 +1317,10 @@ fun WatchMenu(watch: PebbleDevice, navBarNav: NavBarNav) {
                             Icon(Icons.Outlined.Autorenew, contentDescription = null)
                         },
                         onClick = {
-                            watch.checkforFirmwareUpdate(true)
+                            showMenu = false
+                            requestFirmwareUpdateCheckConsent {
+                                watch.checkforFirmwareUpdate(true)
+                            }
                         }
                     )
                 }

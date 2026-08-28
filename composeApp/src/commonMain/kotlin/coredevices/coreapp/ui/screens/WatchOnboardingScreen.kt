@@ -79,6 +79,7 @@ import coredevices.pebble.ui.WatchOnboardingFinished
 import coredevices.pebble.ui.allCollectionUuids
 import coredevices.pebble.ui.asCommonApp
 import coredevices.pebble.ui.connectedWatch
+import coredevices.pebble.ui.fdroidFirmwareUpdateCheckWarning
 import coredevices.pebble.ui.languagePackInstalled
 import coredevices.pebble.ui.launchApp
 import coredevices.pebble.ui.rememberExternalWatchAppConsentRequester
@@ -180,9 +181,33 @@ fun WatchOnboardingScreen(
                     }
 
                     if (connectedWatch is ConnectedPebbleDeviceInRecovery) {
-                        val firmwareUpdateAvailable = connectedWatch.firmwareUpdateAvailable.result
+                        val firmwareUpdateState = connectedWatch.firmwareUpdateAvailable
+                        val firmwareUpdateAvailable = firmwareUpdateState.result
                         if (firmwareUpdateAvailable !is FirmwareUpdateCheckResult.FoundUpdate) {
-                            SectionText("Checking for PebbleOS updates..")
+                            if (CommonBuildKonfig.FDROID_BUILD) {
+                                SectionText(
+                                    fdroidFirmwareUpdateCheckWarning(
+                                        connectedWatch.watchInfo.platform,
+                                    ).orEmpty(),
+                                )
+
+                                Spacer(modifier = Modifier.height(15.dp))
+
+                                PebbleElevatedButton(
+                                    text = if (firmwareUpdateState.checkingForUpdates) {
+                                        "Checking for PebbleOS updates..."
+                                    } else {
+                                        "Check for PebbleOS update"
+                                    },
+                                    onClick = {
+                                        connectedWatch.checkforFirmwareUpdate(force = true)
+                                    },
+                                    enabled = !firmwareUpdateState.checkingForUpdates,
+                                    primaryColor = true,
+                                )
+                            } else {
+                                SectionText("Checking for PebbleOS updates..")
+                            }
 
                             Spacer(modifier = Modifier.height(15.dp))
 
