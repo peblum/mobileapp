@@ -21,6 +21,7 @@ import coredevices.ring.util.trace.TraceSessionExporter
 import coredevices.util.CompanionDevice
 import coredevices.util.CoreConfigFlow
 import coredevices.util.PermissionRequester
+import coredevices.util.thirdPartyDiagnosticsEnabledByDefault
 import coredevices.util.models.CactusSTTMode
 import coredevices.util.transcription.HybridTranscriptionService
 import dev.gitlive.firebase.Firebase
@@ -304,9 +305,19 @@ class BugReportProcessor(
             }
             append("\nTime since last full background sync: ${coreBackgroundSync.timeSinceLastSync()}")
             append("\nAnalytics settings:")
-            append("\nFirebase uploads enabled: ${settings.getBoolean(KEY_ENABLE_FIREBASE_UPLOADS, true)}")
-            append("\nMemfault uploads enabled: ${settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, true)}")
-            append("\nMixpanel uploads enabled: ${settings.getBoolean(KEY_ENABLE_MIXPANEL_UPLOADS, true)}")
+            val diagnosticsEnabledByDefault = thirdPartyDiagnosticsEnabledByDefault()
+            append(
+                "\nFirebase uploads enabled: " +
+                    settings.getBoolean(KEY_ENABLE_FIREBASE_UPLOADS, diagnosticsEnabledByDefault)
+            )
+            append(
+                "\nMemfault uploads enabled: " +
+                    settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, diagnosticsEnabledByDefault)
+            )
+            append(
+                "\nMixpanel uploads enabled: " +
+                    settings.getBoolean(KEY_ENABLE_MIXPANEL_UPLOADS, diagnosticsEnabledByDefault)
+            )
         }
         return summaryWithAttachmentCount
     }
@@ -753,4 +764,3 @@ fun Path?.readMostRecent(bytes: Int): String? {
         null
     }
 }
-
