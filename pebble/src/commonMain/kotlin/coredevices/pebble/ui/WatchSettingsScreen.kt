@@ -119,6 +119,8 @@ import coredevices.pebble.account.PebbleAccount
 import coredevices.pebble.health.HealthSyncTracker
 import coredevices.pebble.health.PlatformHealthSync
 import coredevices.pebble.rememberLibPebble
+import coredevices.pebble.services.AnalyticsHeartbeatQueue
+import coredevices.pebble.services.MemfaultChunkQueue
 import coredevices.pebble.ui.SettingsIds.EnableActivityInsights
 import coredevices.pebble.ui.SettingsIds.EnableHealthPlatformSync
 import coredevices.pebble.ui.SettingsIds.EnableHealthTracking
@@ -141,6 +143,7 @@ import coredevices.util.STTConfig
 import coredevices.util.WeatherUnit
 import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.emailOrNull
+import coredevices.util.thirdPartyDiagnosticsEnabledByDefault
 import coredevices.util.models.CactusSTTMode
 import coredevices.util.models.ModelDownloadStatus
 import coredevices.util.models.ModelInfo
@@ -449,9 +452,24 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     val missingPermissions by permissionRequester.missingPermissions.collectAsState()
     val uiContext = rememberUiContext()
     val analyticsBackend: AnalyticsBackend = koinInject()
-    val enableFirebase = remember { mutableStateOf(settings.getBoolean(KEY_ENABLE_FIREBASE_UPLOADS, true)) }
-    val enableMemfault = remember { mutableStateOf(settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, true)) }
-    val enableMixpanel = remember { mutableStateOf(settings.getBoolean(KEY_ENABLE_MIXPANEL_UPLOADS, true)) }
+    val analyticsHeartbeatQueue: AnalyticsHeartbeatQueue = koinInject()
+    val memfaultChunkQueue: MemfaultChunkQueue = koinInject()
+    val diagnosticsEnabledByDefault = thirdPartyDiagnosticsEnabledByDefault()
+    val enableFirebase = remember {
+        mutableStateOf(
+            settings.getBoolean(KEY_ENABLE_FIREBASE_UPLOADS, diagnosticsEnabledByDefault)
+        )
+    }
+    val enableMemfault = remember {
+        mutableStateOf(
+            settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, diagnosticsEnabledByDefault)
+        )
+    }
+    val enableMixpanel = remember {
+        mutableStateOf(
+            settings.getBoolean(KEY_ENABLE_MIXPANEL_UPLOADS, diagnosticsEnabledByDefault)
+        )
+    }
     val enableExperimentalDevices: EnableExperimentalDevices = koinInject()
     val experimentalDevices by enableExperimentalDevices.enabled.collectAsState()
     val appUpdateTracker: AppUpdateTracker = koinInject()
@@ -1620,7 +1638,8 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                 ),
                 basicSettingsToggleItem(
                     title = "Send app crashes",
-                    description = "This allows us to fix crashes in the mobile app - otherwise we don't know how often they are happening, or how to fix them",
+                    description = "This allows us to fix crashes in the mobile app - otherwise " +
+                        "we don't know how often they are happening, or how to fix them",
                     topLevelType = TopLevelType.Phone,
                     section = Section.Diagnostics,
                     checked = enableFirebase.value,
@@ -1632,24 +1651,35 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         }
                         Firebase.crashlytics.setCrashlyticsCollectionEnabled(it)
                     },
+                    show = { !CommonBuildKonfig.FDROID_BUILD },
                 ),
                 basicSettingsToggleItem(
                     title = "Send watch analytics",
-                    description = "Only for Core Devices watches. This allows us to measure metrics e.g. battery life, and debug watch crashes (otherwise we do not know whether they are regressions in reliability or performance)",
+                    description = if (CommonBuildKonfig.FDROID_BUILD) {
+                        "Send battery, performance, and crash diagnostics for Core Devices " +
+                            "watches to Core Devices."
+                    } else {
+                        "Only for Core Devices watches. This allows us to measure metrics e.g. " +
+                            "battery life, and debug watch crashes (otherwise we do not know " +
+                            "whether they are regressions in reliability or performance)"
+                    },
                     topLevelType = TopLevelType.Phone,
                     section = Section.Diagnostics,
                     checked = enableMemfault.value,
                     onCheckChanged = {
                         enableMemfault.value = it
+                        settings.set(KEY_ENABLE_MEMFAULT_UPLOADS, it)
                         if (!it) {
                             coreAnalytics.logEvent("memfault_collection_disabled")
+                            analyticsHeartbeatQueue.discardPending()
+                            memfaultChunkQueue.discardPending()
                         }
-                        settings.set(KEY_ENABLE_MEMFAULT_UPLOADS, it)
                     },
                 ),
                 basicSettingsToggleItem(
                     title = "Send app analytics",
-                    description = "This allows us to track metrics e.g. connectivity, so that we can track different types of error and improve reliability",
+                    description = "This allows us to track metrics e.g. connectivity, so that " +
+                        "we can track different types of error and improve reliability",
                     topLevelType = TopLevelType.Phone,
                     section = Section.Diagnostics,
                     checked = enableMixpanel.value,
@@ -1661,6 +1691,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         }
                         analyticsBackend.setEnabled(it)
                     },
+                    show = { !CommonBuildKonfig.FDROID_BUILD },
                 ),
                 basicSettingsToggleItem(
                     title = "Show notifications in phone logs",

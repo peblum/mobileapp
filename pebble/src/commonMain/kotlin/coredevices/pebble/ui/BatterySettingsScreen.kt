@@ -37,6 +37,7 @@ import coredevices.ui.PebbleWebviewUrlInterceptor
 import coredevices.ui.SignInDialog
 import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.emailOrNull
+import coredevices.util.thirdPartyDiagnosticsEnabledByDefault
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.auth.auth
 import io.ktor.http.encodeURLParameter
@@ -51,7 +52,10 @@ fun BatterySettingsScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
     val cloudAuthEnabled = cloudAccountAuthEnabled()
     val apiConfig = koinInject<CommonApiConfig>()
     val settings = koinInject<Settings>()
-    val analyticsEnabled = settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, true)
+    val analyticsEnabled = settings.getBoolean(
+        KEY_ENABLE_MEMFAULT_UPLOADS,
+        thirdPartyDiagnosticsEnabledByDefault(),
+    )
     val accountEmail by Firebase.auth.idTokenChanged
         .map { it?.emailOrNull }
         .distinctUntilChanged()
