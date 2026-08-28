@@ -32,6 +32,42 @@ jobs:
           GITHUB_ACTOR: ${{ secrets.READ_PACKAGES_ACTOR }}
           GITHUB_TOKEN: ${{ secrets.READ_PACKAGES_TOKEN }}
 
+  android-fdroid:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Cache build deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-fdroid-deps-${{ runner.os }}-${{ hashFiles('gradle/**', 'gradlew*', 'gradle.properties', '*.gradle*') }}
+          restore-keys: |
+            android-fdroid-deps-${{ runner.os }}-
+      - name: Prepare F-Droid source
+        run: |
+          git apply --check --whitespace=error-all docs/fdroid-scanner.patch
+          git apply --whitespace=error-all docs/fdroid-scanner.patch
+          rm -- \
+            cactus-native/src/main/jniLibs/arm64-v8a/libcactus_engine.so \
+            cactus/src/commonMain/resources/ios/lib/ios-arm64-simulator/libcactus_engine.a \
+            cactus/src/commonMain/resources/ios/lib/ios-arm64-simulator/libcurl.a \
+            cactus/src/commonMain/resources/ios/lib/ios-arm64/libcactus_engine.a \
+            cactus/src/commonMain/resources/ios/lib/ios-arm64/libcurl.a \
+            models/needle-pebble-ft-cq4.zip \
+            composeApp/src/androidMain/assets/models/needle-pebble-ft-cq4.zip
+      - name: Build and Test
+        run: ./gradlew -PfdroidBuild=true :androidApp:assembleDebug :androidApp:assembleRelease testDebugUnitTest lintDebug
+
   ios:
     runs-on: macos-15
     steps:
