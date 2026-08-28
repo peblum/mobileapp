@@ -243,7 +243,7 @@ class RecordingProcessingQueueTest {
         // Agent (uses FakeNenyaClient via Koin)
         factory { p -> IndexAgentNenya(get(), p.getOrNull() ?: emptyList()) }
         factory { p -> SearchAgentNenya(get(), get(), get(), p.getOrNull() ?: emptyList()) }
-        singleOf(::AgentFactory)
+        single { AgentFactory(isSignedIn = { true }) }
         singleOf(::McpSessionFactory)
 
         single {

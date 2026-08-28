@@ -249,7 +249,7 @@ val experimentalModule = module {
     single { CactusModelProvider() }
     single<CactusModelPathProvider> { get<CactusModelProvider>() }
     factory { p -> IndexAgentCactus(get<CactusModelProvider>(), p.getOrNull() ?: emptyList(), getOrNull<InferenceBoostProvider>() ?: NoOpInferenceBoostProvider()) }
-    singleOf(::AgentFactory)
+    single { AgentFactory() }
     singleOf(::RecordingProcessor)
     singleOf(::IndexButtonActionHandler)
     singleOf(::IndexButtonSequenceRecorder)
