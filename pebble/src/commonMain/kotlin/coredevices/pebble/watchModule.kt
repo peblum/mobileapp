@@ -192,7 +192,13 @@ val watchModule = module {
     singleOf(::EngDashOta)
     singleOf(::MemfaultChunkQueue)
     singleOf(::AnalyticsIngest)
-    singleOf(::AnalyticsHeartbeatQueue)
+    single {
+        AnalyticsHeartbeatQueue(
+            ingest = get(),
+            dao = get(),
+            settings = get(),
+        )
+    }
     singleOf(::ContactDeveloperApi)
     factoryOf(::Cohorts)
     singleOf(::FirmwareUpdateCheck)
