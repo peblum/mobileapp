@@ -190,7 +190,13 @@ val watchModule = module {
     factoryOf(::LibPebbleConfig)
     singleOf(::Memfault)
     singleOf(::EngDashOta)
-    singleOf(::MemfaultChunkQueue)
+    single {
+        MemfaultChunkQueue(
+            memfault = get(),
+            dao = get(),
+            settings = get(),
+        )
+    }
     singleOf(::AnalyticsIngest)
     single {
         AnalyticsHeartbeatQueue(

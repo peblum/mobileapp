@@ -28,6 +28,9 @@ interface MemfaultChunkDao {
     @Query("DELETE FROM memfault_chunks WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
+    @Query("DELETE FROM memfault_chunks")
+    suspend fun deleteAll()
+
     @Query("SELECT COUNT(*) FROM memfault_chunks")
     suspend fun count(): Long
 
