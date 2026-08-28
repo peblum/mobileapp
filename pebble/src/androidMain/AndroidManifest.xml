@@ -11,7 +11,8 @@
             android:name="io.rebble.libpebblecommon.pebblekit.two.PebbleKitProvider"
             android:exported="true" />
         <provider
-            android:authorities="com.getpebble.android.provider.basalt"
+            android:authorities="${pebbleKitClassicProviderAuthority}"
+            android:enabled="${pebbleKitClassicProviderEnabled}"
             android:name="io.rebble.libpebblecommon.pebblekit.classic.PebbleKitProvider"
             tools:ignore="ExportedContentProvider"
             android:exported="true" />

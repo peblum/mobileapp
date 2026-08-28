@@ -45,6 +45,11 @@ val gitVersionName = providers.exec {
     }.standardOutput.asText
 }.map { it.trim().ifEmpty { "unknown" } }
 
+val gitShortRevision = providers.exec {
+    isIgnoreExitValue = true
+    commandLine("git", "rev-parse", "--short=12", "HEAD")
+}.standardOutput.asText.map { it.trim() }
+
 android {
     namespace = "coredevices.coreapp"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -65,6 +70,9 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["pebbleKitClassicProviderAuthority"] =
+            "com.getpebble.android.provider.basalt"
+        manifestPlaceholders["pebbleKitClassicProviderEnabled"] = true
         ndk {
             //noinspection ChromeOsAbiSupport
             abiFilters += if (fdroidBuild) {
@@ -116,11 +124,33 @@ android {
                 }
             }
         }
+        if (fdroidBuild) {
+            create("ci") {
+                initWith(getByName("debug"))
+                applicationIdSuffix = ".ci"
+                manifestPlaceholders["pebbleKitClassicProviderAuthority"] =
+                    "coredevices.coreapp.ci.provider.basalt"
+                manifestPlaceholders["pebbleKitClassicProviderEnabled"] = false
+                resValue("string", "app_name", "Pebble CI")
+                matchingFallbacks += listOf("debug")
+            }
+            create("nightly") {
+                initWith(getByName("release"))
+                applicationIdSuffix = ".nightly"
+                manifestPlaceholders["pebbleKitClassicProviderAuthority"] =
+                    "coredevices.coreapp.nightly.provider.basalt"
+                manifestPlaceholders["pebbleKitClassicProviderEnabled"] = false
+                resValue("string", "app_name", "Pebble Nightly")
+                matchingFallbacks += listOf("release")
+            }
+        }
     }
     sourceSets {
         if (fdroidBuild) {
             getByName("debug").manifest.srcFile("src/androidFdroid/AndroidManifest.xml")
             getByName("release").manifest.srcFile("src/androidFdroid/AndroidManifest.xml")
+            getByName("ci").manifest.srcFile("src/androidFdroid/AndroidManifest.xml")
+            getByName("nightly").manifest.srcFile("src/androidFdroid/AndroidManifest.xml")
         }
     }
     compileOptions {
@@ -231,9 +261,23 @@ val bundledSpeechModels = tasks.register<BundleSpeechModels>("bundleSpeechModels
 // configuration cache.
 androidComponents {
     onVariants { variant ->
-        variant.outputs.forEach {
-            it.versionCode.set(gitVersionCode)
-            it.versionName.set(gitVersionName)
+        val testChannel = fdroidBuild && variant.buildType in setOf("ci", "nightly")
+        if (testChannel) {
+            variant.sources.manifests.addStaticManifestFile(
+                "src/androidForgejo/AndroidManifest.xml",
+            )
+        }
+        variant.outputs.forEach { output ->
+            output.versionCode.set(gitVersionCode)
+            if (testChannel) {
+                output.versionName.set(
+                    gitVersionCode.zip(gitShortRevision) { code, revision ->
+                        "0.0.0-${variant.buildType}.$code+$revision"
+                    }
+                )
+            } else {
+                output.versionName.set(gitVersionName)
+            }
         }
         if (bundleSpeechModels && !fdroidBuild) {
             variant.sources.assets?.addGeneratedSourceDirectory(bundledSpeechModels, BundleSpeechModels::assetsDir)
