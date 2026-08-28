@@ -1,3 +1,21 @@
+buildscript {
+    val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+    if (!fdroidBuild) {
+        repositories {
+            google()
+            mavenCentral()
+            gradlePluginPortal()
+        }
+        dependencies {
+            classpath("com.google.gms:google-services:${libs.versions.googleServices.get()}")
+            classpath(
+                "com.google.firebase:firebase-crashlytics-gradle:" +
+                    libs.versions.firebase.crashlytics.plugin.get()
+            )
+        }
+    }
+}
+
 plugins {
     // this is necessary to avoid the plugins to be loaded multiple times
     // in each subproject's classloader

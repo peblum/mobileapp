@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+
 kotlin {
 
     // Target declarations - add or remove as needed below. These define
@@ -74,7 +76,11 @@ kotlin {
                 implementation(libs.room.runtime)
                 implementation(libs.room.paging)
                 implementation(libs.kotlinx.datetime)
-                implementation(libs.firebase.firestore)
+                if (fdroidBuild) {
+                    implementation(project(":firebase-stubs"))
+                } else {
+                    implementation(libs.firebase.firestore)
+                }
 
                 implementation(project(":mcp"))
             }
@@ -97,7 +103,9 @@ kotlin {
                 // the BOM for app-level deps but Gradle doesn't propagate
                 // it back up to library modules that consume gitlive
                 // directly, so we re-declare it here.
-                implementation(project.dependencies.platform(libs.firebase.bom))
+                if (!fdroidBuild) {
+                    implementation(project.dependencies.platform(libs.firebase.bom))
+                }
             }
         }
 

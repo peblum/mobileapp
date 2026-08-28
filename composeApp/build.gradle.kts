@@ -11,6 +11,7 @@ plugins {
     alias(libs.plugins.kotlinx.atomicfu)
 }
 
+val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
 kotlin {
     val xcodeExists = providers.exec {
         isIgnoreExitValue = true
@@ -166,22 +167,38 @@ kotlin {
                 optIn("kotlin.time.ExperimentalTime")
             }
         }
-        androidMain.dependencies {
-            implementation(project.dependencies.platform(libs.firebase.bom))
-            implementation(libs.firebase.crashlytics.ndk)
-            implementation(compose.preview)
-            implementation(compose.uiTooling)
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.androidx.credentials)
-            implementation(libs.gms.auth)
-            implementation(libs.identity.google)
-            implementation(libs.ktor.client.okhttp)
-            implementation(libs.coroutines.android)
-            implementation(libs.androidx.work)
-            implementation(libs.play.update)
-            implementation(libs.play.update.ktx)
-            implementation(libs.coil.gif)
-            implementation(libs.coredevices.haversine)
+        androidMain {
+            if (fdroidBuild) {
+                kotlin.srcDir("src/androidFdroidMain/kotlin")
+                kotlin.exclude(
+                    "coredevices/coreapp/auth/AppleAuthUtil.android.kt",
+                    "coredevices/coreapp/auth/GithubAuthUtil.android.kt",
+                    "coredevices/coreapp/auth/GoogleAuthUtil.android.kt",
+                )
+            }
+            dependencies {
+                implementation(compose.preview)
+                implementation(compose.uiTooling)
+                implementation(libs.androidx.activity.compose)
+                implementation(libs.androidx.credentials)
+                implementation(libs.ktor.client.okhttp)
+                implementation(libs.coroutines.android)
+                implementation(libs.androidx.work)
+                implementation(libs.coil.gif)
+                if (fdroidBuild) {
+                    implementation(project(":haversine-stubs"))
+                } else {
+                    implementation(libs.coredevices.haversine)
+                }
+                if (!fdroidBuild) {
+                    implementation(project.dependencies.platform(libs.firebase.bom))
+                    implementation(libs.firebase.crashlytics.ndk)
+                    implementation(libs.gms.auth)
+                    implementation(libs.identity.google)
+                    implementation(libs.play.update)
+                    implementation(libs.play.update.ktx)
+                }
+            }
         }
         getByName("androidHostTest").dependencies {
             implementation(libs.ktor.client.okhttp)
@@ -217,9 +234,15 @@ kotlin {
             implementation(libs.coil)
             implementation(libs.coil.svg)
 
-            implementation(libs.firebase.auth)
-            implementation(libs.firebase.firestore)
-            implementation(libs.firebase.crashlytics)
+            if (fdroidBuild) {
+                implementation(project(":firebase-stubs"))
+                implementation(project(":health-stubs"))
+                implementation(project(":notifier-stubs"))
+            } else {
+                implementation(libs.firebase.auth)
+                implementation(libs.firebase.firestore)
+                implementation(libs.firebase.crashlytics)
+            }
 
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.contentNegotiation)
@@ -229,13 +252,15 @@ kotlin {
             implementation(project(":pebble"))
             implementation(project(":util"))
             implementation(project(":experimental"))
-            implementation(libs.kmpnotifier)
             implementation(libs.kmpio)
             implementation(project(":libpebble3"))
             implementation(project(":libindex"))
             implementation(project(":index-ai"))
             api(project(":mcp"))
-            implementation(libs.health.kmp)
+            if (!fdroidBuild) {
+                implementation(libs.kmpnotifier)
+                implementation(libs.health.kmp)
+            }
         }
     }
 }

@@ -16,6 +16,8 @@ plugins {
     alias(libs.plugins.nativeCocoaPods)
 }
 
+val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+
 compose.resources {
     packageOfResClass = "coreapp.ring.generated.resources"
 }
@@ -201,22 +203,34 @@ kotlin {
                 implementation(libs.room.paging)
                 implementation(libs.sqlite.bundled)
 
-                implementation(libs.firebase.auth)
-                implementation(libs.firebase.firestore)
-                implementation(libs.firebase.crashlytics)
-                implementation(libs.firebase.storage)
+                if (fdroidBuild) {
+                    implementation(project(":firebase-stubs"))
+                } else {
+                    implementation(libs.firebase.auth)
+                    implementation(libs.firebase.firestore)
+                    implementation(libs.firebase.crashlytics)
+                    implementation(libs.firebase.storage)
+                }
 
                 implementation(project(":mcp"))
                 implementation(project(":index-ai"))
                 implementation(project(":resampler"))
-                implementation(libs.coredevices.haversine)
-                implementation(project(":cactus"))
+                if (fdroidBuild) {
+                    implementation(project(":haversine-stubs"))
+                } else {
+                    implementation(libs.coredevices.haversine)
+                }
+                implementation(project(if (fdroidBuild) ":cactus-stubs" else ":cactus"))
                 implementation(project(":libindex"))
                 implementation(project(":libpebble3"))
                 implementation(libs.settings)
                 implementation(libs.kable)
                 implementation(libs.uri)
-                implementation(libs.kmpnotifier)
+                if (fdroidBuild) {
+                    implementation(project(":notifier-stubs"))
+                } else {
+                    implementation(libs.kmpnotifier)
+                }
             }
         }
 
@@ -229,17 +243,25 @@ kotlin {
         }
 
         androidMain {
+            if (fdroidBuild) {
+                kotlin.srcDir("src/androidFdroidMain/kotlin")
+                kotlin.exclude(
+                    "coredevices/ring/database/firestore/dao/AggregateCount.android.kt",
+                )
+            }
             dependencies {
-                // gitlive's compile variant declares com.google.firebase:* without versions.
-                implementation(project.dependencies.platform(libs.firebase.bom))
                 implementation(libs.androidx.glance)
                 implementation(libs.androidx.glance.material3)
                 implementation(compose.uiTooling)
-                implementation(libs.identity.google)
                 implementation(libs.ktor.client.okhttp)
                 implementation(libs.androidx.credentials)
                 implementation(libs.zxing.core)
                 implementation(libs.androidx.documentfile)
+                if (!fdroidBuild) {
+                    // gitlive's compile variant declares com.google.firebase:* without versions.
+                    implementation(project.dependencies.platform(libs.firebase.bom))
+                    implementation(libs.identity.google)
+                }
             }
         }
 

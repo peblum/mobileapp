@@ -9,6 +9,8 @@ plugins {
     alias(libs.plugins.kotlinx.atomicfu)
 }
 
+val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+
 kotlin {
     android {
         namespace = "coredevices.pebble"
@@ -74,7 +76,11 @@ kotlin {
         commonMain {
             dependencies {
                 implementation(project(":libpebble3"))
-                implementation(libs.health.kmp)
+                if (fdroidBuild) {
+                    implementation(project(":health-stubs"))
+                } else {
+                    implementation(libs.health.kmp)
+                }
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(libs.compose.material3)
@@ -102,11 +108,15 @@ kotlin {
                 implementation(libs.webview)
                 implementation(libs.backhandler)
                 api(libs.uri)
-                implementation(libs.firebase.crashlytics)
-                implementation(libs.firebase.auth)
-                implementation(libs.firebase.firestore)
+                if (fdroidBuild) {
+                    implementation(project(":firebase-stubs"))
+                } else {
+                    implementation(libs.firebase.crashlytics)
+                    implementation(libs.firebase.auth)
+                    implementation(libs.firebase.firestore)
+                }
                 implementation(libs.coredevices.speex)
-                api(project(":cactus"))
+                api(project(if (fdroidBuild) ":cactus-stubs" else ":cactus"))
                 api(libs.algolia)
                 implementation(libs.reorderable)
                 implementation(libs.compass.geocoder)

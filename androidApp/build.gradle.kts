@@ -6,8 +6,12 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.googleServices)
-    alias(libs.plugins.firebaseCrashlytics)
+}
+
+val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+if (!fdroidBuild) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
 }
 
 val properties = Properties().apply {
@@ -111,9 +115,12 @@ dependencies {
     // Components this module's manifest declares, so lint can resolve them.
     implementation(project(":util"))
     implementation(libs.androidx.core.ktx)
-    implementation(libs.health.kmp)
+    if (fdroidBuild) {
+        implementation(project(":health-stubs"))
+    } else {
+        implementation(libs.health.kmp)
+    }
 
-    androidTestImplementation(platform(libs.firebase.bom))
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.ktor.client.okhttp)
@@ -121,8 +128,14 @@ dependencies {
     androidTestImplementation(libs.koin.android)
     androidTestImplementation(libs.coroutines)
     androidTestImplementation(libs.kotlin.test)
-    androidTestImplementation(libs.firebase.auth)
-    androidTestImplementation(project(":cactus"))
+    if (fdroidBuild) {
+        androidTestImplementation(project(":firebase-stubs"))
+        androidTestImplementation(project(":cactus-stubs"))
+    } else {
+        androidTestImplementation(platform(libs.firebase.bom))
+        androidTestImplementation(libs.firebase.auth)
+        androidTestImplementation(project(":cactus"))
+    }
     androidTestImplementation(project(":experimental"))
     androidTestImplementation(project(":libindex"))
     androidTestImplementation(project(":index-ai"))
