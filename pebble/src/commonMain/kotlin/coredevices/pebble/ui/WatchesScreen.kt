@@ -1804,6 +1804,14 @@ fun LanguageDialog(watch: ConnectedPebbleDevice, onDismissRequest: () -> Unit) {
         title = { Text("Language Packs") },
         text = {
             LazyColumn {
+                fdroidLanguagePackDownloadWarning()?.let { warning ->
+                    item {
+                        Text(
+                            text = warning,
+                            modifier = Modifier.padding(bottom = 12.dp),
+                        )
+                    }
+                }
                 items(languagePacks, key = { it.id }) { lp ->
                     val isSelected = selectedLanguagePack == lp
                     Text(
@@ -2073,6 +2081,10 @@ fun WatchDetails(
                 title = { Text("Install PebbleOS ${firmwareUpdateAvailable.version.stringVersion}") },
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
+                        fdroidFirmwareDownloadWarning()?.let { warning ->
+                            Text(warning)
+                            Spacer(Modifier.height(12.dp))
+                        }
                         Text(firmwareUpdateAvailable.notes)
                     }
                 },
@@ -2080,7 +2092,15 @@ fun WatchDetails(
                     TextButton(onClick = {
                         showFirmwareUpdateConfirmDialog = false
                         firmwareUpdater.updateFirmware(firmwareUpdateAvailable)
-                    }) { Text("Install") }
+                    }) {
+                        Text(
+                            if (CommonBuildKonfig.FDROID_BUILD) {
+                                "Download and install"
+                            } else {
+                                "Install"
+                            }
+                        )
+                    }
                 },
                 dismissButton = { TextButton(onClick = { showFirmwareUpdateConfirmDialog = false }) { Text("Cancel") } }
             )

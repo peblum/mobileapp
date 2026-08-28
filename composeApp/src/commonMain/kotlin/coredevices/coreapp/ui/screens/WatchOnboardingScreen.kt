@@ -82,9 +82,11 @@ import coredevices.pebble.ui.connectedWatch
 import coredevices.pebble.ui.languagePackInstalled
 import coredevices.pebble.ui.launchApp
 import coredevices.pebble.ui.rememberExternalWatchAppConsentRequester
+import coredevices.pebble.ui.rememberFirmwareDownloadConsentRequester
 import coredevices.pebble.ui.rememberSettingsItemsState
 import coredevices.ui.CoreLinearProgressIndicator
 import coredevices.ui.PebbleElevatedButton
+import coredevices.util.CommonBuildKonfig
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDeviceInRecovery
 import io.rebble.libpebblecommon.connection.FirmwareUpdateCheckResult
@@ -192,23 +194,56 @@ fun WatchOnboardingScreen(
                             return@Scaffold
                         }
 
-                        LaunchedEffect(haveStartedFwupSinceLastConnection) {
-                            if (!haveStartedFwupSinceLastConnection) {
-                                logger.d { "Starting firmware update from onboarding screen" }
-                                haveStartedFwupSinceLastConnection = true
-                                haveUpdatedFirmware = true
-                                connectedWatch.updateFirmware(firmwareUpdateAvailable)
-                            }
-                        }
-
-                        SectionText("Updating your watch to the latest version of PebbleOS...")
-                        Spacer(modifier = Modifier.height(15.dp))
-                        val progress = (connectedWatch.firmwareUpdateState as? FirmwareUpdater.FirmwareUpdateStatus.InProgress)?.progress?.collectAsState()
-                        if (progress != null) {
-                            CoreLinearProgressIndicator(
-                                progress = { progress.value },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                        val requestFirmwareDownloadConsent =
+                            rememberFirmwareDownloadConsentRequester(
+                                requestKey =
+                                    connectedWatch.identifier to firmwareUpdateAvailable,
                             )
+
+                        if (CommonBuildKonfig.FDROID_BUILD &&
+                            !haveStartedFwupSinceLastConnection
+                        ) {
+                            SectionText("PebbleOS is required to recover this watch.")
+                            Spacer(modifier = Modifier.height(15.dp))
+                            PebbleElevatedButton(
+                                text = "Download and install PebbleOS",
+                                onClick = {
+                                    requestFirmwareDownloadConsent {
+                                        logger.d {
+                                            "Starting firmware update from onboarding screen"
+                                        }
+                                        haveStartedFwupSinceLastConnection = true
+                                        haveUpdatedFirmware = true
+                                        connectedWatch.updateFirmware(firmwareUpdateAvailable)
+                                    }
+                                },
+                                primaryColor = true,
+                            )
+                        } else {
+                            LaunchedEffect(haveStartedFwupSinceLastConnection) {
+                                if (!haveStartedFwupSinceLastConnection) {
+                                    logger.d {
+                                        "Starting firmware update from onboarding screen"
+                                    }
+                                    haveStartedFwupSinceLastConnection = true
+                                    haveUpdatedFirmware = true
+                                    connectedWatch.updateFirmware(firmwareUpdateAvailable)
+                                }
+                            }
+
+                            SectionText("Updating your watch to the latest version of PebbleOS...")
+                            Spacer(modifier = Modifier.height(15.dp))
+                            val progress =
+                                (connectedWatch.firmwareUpdateState as?
+                                    FirmwareUpdater.FirmwareUpdateStatus.InProgress)
+                                    ?.progress
+                                    ?.collectAsState()
+                            if (progress != null) {
+                                CoreLinearProgressIndicator(
+                                    progress = { progress.value },
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                                )
+                            }
                         }
                         SectionDivider()
                     }

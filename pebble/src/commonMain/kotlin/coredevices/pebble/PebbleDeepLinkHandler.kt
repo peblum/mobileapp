@@ -161,6 +161,9 @@ class RealPebbleDeepLinkHandler(
 
     private fun handleLanguagePack(uri: Uri, name: String): Boolean {
         logger.v { "handleLanguagePack() $uri" }
+        if (CommonBuildKonfig.FDROID_BUILD) {
+            return rejectExternalPayload(name)
+        }
         val file = writeFile(context, uri)
         if (file == null) {
             logger.w { "handleLanguagePack: couldn't write file" }
@@ -181,6 +184,9 @@ class RealPebbleDeepLinkHandler(
 
     private fun handleFirmware(uri: Uri, fileName: String): Boolean {
         logger.v { "handleFirmware() $uri" }
+        if (CommonBuildKonfig.FDROID_BUILD) {
+            return rejectExternalPayload(uri.lastPathSegment ?: "firmware")
+        }
         val file = writeFile(context, uri)
         if (file == null) {
             logger.w { "handleFirmware: couldn't write file" }
@@ -257,6 +263,9 @@ class RealPebbleDeepLinkHandler(
 
     private fun handleApp(uri: Uri): Boolean {
         logger.v { "handleApp() $uri" }
+        if (CommonBuildKonfig.FDROID_BUILD) {
+            return rejectExternalPayload(uri.lastPathSegment ?: "watch app")
+        }
         val file = writeFile(context, uri)
         if (file == null) {
             logger.w { "handleApp: couldn't write file" }
@@ -265,6 +274,15 @@ class RealPebbleDeepLinkHandler(
         GlobalScope.launch {
             libPebble.sideloadApp(file)
         }
+        return true
+    }
+
+    private fun rejectExternalPayload(name: String): Boolean {
+        logger.w { "Rejected external payload in F-Droid build: $name" }
+        _snackBarMessages.tryEmit(
+            "External app, firmware, and language-pack files are disabled in this build. " +
+                "Use an in-app sideload action instead."
+        )
         return true
     }
 
@@ -311,7 +329,7 @@ class RealPebbleDeepLinkHandler(
     }
 
     private fun handleShowWatches(path: String?): Boolean {
-        if (path != null) {
+        if (path != null && !CommonBuildKonfig.FDROID_BUILD) {
             firmwareUpdateUiTracker.updateWatchNow(libPebble, path.removePrefix("/").removeSuffix("/"))
         }
         val route = PebbleNavBarRoutes.WatchesRoute
