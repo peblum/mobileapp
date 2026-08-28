@@ -2,21 +2,30 @@ name: Build
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - name: Setup JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: 'temurin'
           java-version: 17
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false
           submodules: recursive
       - name: Cache build deps
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.gradle/caches
@@ -27,25 +36,34 @@ jobs:
       - name: Use dummy google-services json
         run: mv androidApp/src/google-services-dummy.json androidApp/src/google-services.json
       - name: Build and Test
-        run: ./gradlew -PbundleSpeechModels=false :androidApp:assembleDebug testDebugUnitTest testAndroidHostTest jvmTest lintDebug
+        run: >-
+          ./gradlew --continue
+          -PbundleSpeechModels=false
+          :androidApp:assembleDebug
+          testDebugUnitTest
+          testAndroidHostTest
+          jvmTest
+          lint
         env:
           GITHUB_ACTOR: ${{ secrets.READ_PACKAGES_ACTOR }}
           GITHUB_TOKEN: ${{ secrets.READ_PACKAGES_TOKEN }}
 
   android-fdroid:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
     steps:
       - name: Setup JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: 'temurin'
           java-version: 17
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false
           submodules: recursive
       - name: Cache build deps
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.gradle/caches
@@ -66,22 +84,92 @@ jobs:
             models/needle-pebble-ft-cq4.zip \
             composeApp/src/androidMain/assets/models/needle-pebble-ft-cq4.zip
       - name: Build and Test
-        run: ./gradlew -PfdroidBuild=true :androidApp:assembleDebug :androidApp:assembleRelease testDebugUnitTest lintDebug
+        run: >-
+          ./gradlew --continue -PfdroidBuild=true
+          :androidApp:assembleDebug
+          :androidApp:assembleRelease
+          testDebugUnitTest
+          testAndroidHostTest
+          jvmTest
+          lint
 
-  ios:
-    runs-on: macos-15
+  android-instrumented:
+    name: Android instrumented tests (F-Droid)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - name: Setup JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
           distribution: 'temurin'
           java-version: 17
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          persist-credentials: false
           submodules: recursive
       - name: Cache build deps
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-instrumented-deps-${{ runner.os }}-${{ hashFiles('gradle/**', 'gradlew*', 'gradle.properties', '*.gradle*') }}
+          restore-keys: |
+            android-instrumented-deps-${{ runner.os }}-
+      - name: Prepare F-Droid source
+        run: |
+          git apply --check --whitespace=error-all docs/fdroid-scanner.patch
+          git apply --whitespace=error-all docs/fdroid-scanner.patch
+          rm -- \
+            cactus-native/src/main/jniLibs/arm64-v8a/libcactus_engine.so \
+            cactus/src/commonMain/resources/ios/lib/ios-arm64-simulator/libcactus_engine.a \
+            cactus/src/commonMain/resources/ios/lib/ios-arm64-simulator/libcurl.a \
+            cactus/src/commonMain/resources/ios/lib/ios-arm64/libcactus_engine.a \
+            cactus/src/commonMain/resources/ios/lib/ios-arm64/libcurl.a \
+            models/needle-pebble-ft-cq4.zip \
+            composeApp/src/androidMain/assets/models/needle-pebble-ft-cq4.zip
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run instrumented tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          disable-linux-hw-accel: false
+          disable-animations: true
+          emulator-boot-timeout: 600
+          emulator-options: >-
+            -no-window
+            -gpu swiftshader_indirect
+            -no-snapshot
+            -noaudio
+            -no-boot-anim
+          script: |
+            ./gradlew --no-parallel -PfdroidBuild=true :androidApp:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=coredevices.coreapp.FdroidApplicationSmokeTest
+            ./gradlew --continue --no-parallel -PfdroidBuild=true :experimental:connectedAndroidDeviceTest :libpebble3:connectedAndroidDeviceTest
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Setup JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      - name: Checkout source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Cache build deps
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.gradle/caches
@@ -98,7 +186,13 @@ jobs:
       - name: Use dummy google-services json
         run: mv androidApp/src/google-services-dummy.json androidApp/src/google-services.json
       - name: Build
-        run: ./gradlew :composeApp:compileKotlinIosArm64 :libpebble3:linkDebugFrameworkIosArm64
+        run: >-
+          ./gradlew --continue
+          :composeApp:compileKotlinIosArm64
+          :experimental:compileTestKotlinIosSimulatorArm64
+          :libpebble3:compileTestKotlinIosSimulatorArm64
+          :util:compileTestKotlinIosSimulatorArm64
+          :libpebble3:linkDebugFrameworkIosArm64
         env:
           GITHUB_ACTOR: ${{ secrets.READ_PACKAGES_ACTOR }}
           GITHUB_TOKEN: ${{ secrets.READ_PACKAGES_TOKEN }}
