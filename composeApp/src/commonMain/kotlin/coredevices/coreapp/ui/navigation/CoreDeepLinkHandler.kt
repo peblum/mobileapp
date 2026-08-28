@@ -6,24 +6,35 @@ import androidx.navigation.NavUri
 import co.touchlab.kermit.Logger
 import com.eygraber.uri.Uri
 import coredevices.ring.ui.navigation.RingRoutes
+import coredevices.util.CommonBuildKonfig
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
-class CoreDeepLinkHandler {
+class CoreDeepLinkHandler(
+    private val indexHardwareEnabled: Boolean = CommonBuildKonfig.INDEX_HARDWARE_ENABLED,
+) {
     private val _navigateToDeepLink = MutableSharedFlow<Any>(extraBufferCapacity = 1, replay = 1)
     val navigateToDeepLink = _navigateToDeepLink.asSharedFlow()
 
     fun handle(uri: Uri): Boolean {
         logger.d { "handle: uri = $uri" }
-        objectRouteFor(uri)?.let { return _navigateToDeepLink.tryEmit(it) }
-        recordingRouteFor(uri)?.let { return _navigateToDeepLink.tryEmit(it) }
+        val indexRoute =
+            objectRouteFor(uri, indexHardwareEnabled = true)
+                ?: recordingRouteFor(uri, indexHardwareEnabled = true)
+        if (indexRoute != null) {
+            return indexHardwareEnabled && _navigateToDeepLink.tryEmit(indexRoute)
+        }
         return _navigateToDeepLink.tryEmit(NavUri(uri.toString()))
     }
 
     /** `pebblecore://deep-link/object?id=<firestoreId>` opens the index item
      *  detail. Emitted as a typed route so navigation doesn't depend on a
      *  per-route deep link registration. */
-    internal fun objectRouteFor(uri: Uri): RingRoutes.ObjectDetails? {
+    internal fun objectRouteFor(
+        uri: Uri,
+        indexHardwareEnabled: Boolean = this.indexHardwareEnabled,
+    ): RingRoutes.ObjectDetails? {
+        if (!indexHardwareEnabled) return null
         if (uri.scheme != SCHEME) return null
         if (uri.host != RingRoutes.OBJECT_DEEP_LINK_HOST) return null
         if (uri.pathSegments.firstOrNull() != RingRoutes.OBJECT_DEEP_LINK_PATH) return null
@@ -34,7 +45,11 @@ class CoreDeepLinkHandler {
 
     /** `pebblecore://deep-link/recording?id=<recordingId>` opens the recording
      *  detail (used by Index notifications). */
-    internal fun recordingRouteFor(uri: Uri): RingRoutes.RecordingDetails? {
+    internal fun recordingRouteFor(
+        uri: Uri,
+        indexHardwareEnabled: Boolean = this.indexHardwareEnabled,
+    ): RingRoutes.RecordingDetails? {
+        if (!indexHardwareEnabled) return null
         if (uri.scheme != SCHEME) return null
         if (uri.host != RingRoutes.OBJECT_DEEP_LINK_HOST) return null
         if (uri.pathSegments.firstOrNull() != RingRoutes.RECORDING_DEEP_LINK_PATH) return null

@@ -10,6 +10,7 @@ import coredevices.pebble.account.PebbleAccount
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
 import coredevices.pebble.ui.NavBarRoute
 import coredevices.pebble.ui.PebbleNavBarRoutes
+import coredevices.util.CommonBuildKonfig
 import io.rebble.libpebblecommon.connection.AppContext
 import io.rebble.libpebblecommon.connection.ConnectedPebble
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
@@ -320,6 +321,9 @@ class RealPebbleDeepLinkHandler(
 
     // Show the Watches tab and ask it to (re-)register the paired ring as a companion device.
     private fun handleRegisterIndexCompanion(): Boolean {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+            return false
+        }
         _navigateToPebbleDeepLink.value = PebbleDeepLink(PebbleNavBarRoutes.WatchesRoute)
         _requestIndexCompanion.value = true
         return true
@@ -330,14 +334,9 @@ class RealPebbleDeepLinkHandler(
             return false
         }
         logger.v { "handleNavbar: $path" }
-        return when (path.removePrefix("/").removeSuffix("/")) {
-            "index" -> {
-                _navigateToPebbleDeepLink.value = PebbleDeepLink(PebbleNavBarRoutes.IndexRoute)
-                true
-            }
-
-            else -> false
-        }
+        val route = navbarRoute(path) ?: return false
+        _navigateToPebbleDeepLink.value = PebbleDeepLink(route)
+        return true
     }
 
     private fun handleGithubAuth(uri: Uri): Boolean {
@@ -381,3 +380,12 @@ class RealPebbleDeepLinkHandler(
         }
     }
 }
+
+internal fun navbarRoute(
+    path: String?,
+    indexHardwareEnabled: Boolean = CommonBuildKonfig.INDEX_HARDWARE_ENABLED,
+): NavBarRoute? =
+    when (path?.removePrefix("/")?.removeSuffix("/")) {
+        "index" -> PebbleNavBarRoutes.IndexRoute.takeIf { indexHardwareEnabled }
+        else -> null
+    }

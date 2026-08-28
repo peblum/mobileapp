@@ -191,10 +191,12 @@ fun AppNavHost(navController: NavHostController, startDestination: Any) {
                     coreNav = coreNav,
                 )
             }
-            composable<CommonRoutes.RingOnboardingRoute> {
-                RingOnboardingScreen(
-                    coreNav = coreNav,
-                )
+            if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+                composable<CommonRoutes.RingOnboardingRoute> {
+                    RingOnboardingScreen(
+                        coreNav = coreNav,
+                    )
+                }
             }
         }
     }

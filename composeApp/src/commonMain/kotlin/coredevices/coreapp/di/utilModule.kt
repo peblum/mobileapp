@@ -64,7 +64,7 @@ val utilModule = module {
     singleOf(::NextBugReportContext)
     singleOf(::CommonAppDelegate) bind CoreBackgroundSync::class
     singleOf(::PushMessaging)
-    singleOf(::CoreDeepLinkHandler)
+    single { CoreDeepLinkHandler() }
     singleOf(::RealThemeProvider) bind ThemeProvider::class
     single { Settings() }
     viewModelOf(::OnboardingViewModel)

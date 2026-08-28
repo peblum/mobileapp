@@ -1962,7 +1962,9 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     action = {
                         navBarNav.navigateTo(CommonRoutes.RingOnboardingRoute)
                     },
-                    show = { debugOptionsEnabled },
+                    show = {
+                        debugOptionsEnabled && CommonBuildKonfig.INDEX_HARDWARE_ENABLED
+                    },
                 ) },
                 basicSettingsToggleItem(
                     title = "Emulate Timeline Webservice",

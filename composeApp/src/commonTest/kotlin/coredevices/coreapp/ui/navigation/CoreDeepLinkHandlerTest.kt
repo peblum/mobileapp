@@ -1,16 +1,19 @@
 package coredevices.coreapp.ui.navigation
 
 import com.eygraber.uri.Uri
+import coredevices.coreapp.di.utilModule
 import coredevices.ring.ui.navigation.RingRoutes
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import org.koin.dsl.koinApplication
 
 // handle() itself isn't exercised here because its fallback path constructs a
 // NavUri (android.net.Uri on Android), which isn't available in JVM unit tests.
 class CoreDeepLinkHandlerTest {
-    private val handler = CoreDeepLinkHandler()
+    private val handler = CoreDeepLinkHandler(indexHardwareEnabled = true)
 
     @Test
     fun recordingDeepLinkParsesToRecordingDetails() {
@@ -45,5 +48,27 @@ class CoreDeepLinkHandlerTest {
     @Test
     fun objectDeepLinkWithBlankIdDoesNotParse() {
         assertNull(handler.objectRouteFor(Uri.parse("pebblecore://deep-link/object?id=")))
+    }
+
+    @Test
+    fun indexDeepLinksAreRejectedWithoutIndexHardware() {
+        val disabledHandler = CoreDeepLinkHandler(indexHardwareEnabled = false)
+        val objectUri = Uri.parse(RingRoutes.objectDeepLink("firestore-doc-1"))
+        val recordingUri = Uri.parse(RingRoutes.recordingDeepLink(123L))
+
+        assertNull(disabledHandler.objectRouteFor(objectUri))
+        assertNull(disabledHandler.recordingRouteFor(recordingUri))
+        assertFalse(disabledHandler.handle(objectUri))
+        assertFalse(disabledHandler.handle(recordingUri))
+    }
+
+    @Test
+    fun utilModuleResolvesHandlerWithoutBooleanDependency() {
+        val application = koinApplication {
+            modules(utilModule)
+        }
+
+        assertNotNull(application.koin.get<CoreDeepLinkHandler>())
+        application.close()
     }
 }
