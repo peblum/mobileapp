@@ -114,7 +114,7 @@ kotlin {
         version = "1.0"
         summary = "CoreDevices Ring Module"
         homepage = "https://repebble.com"
-        license = "proprietary"
+        license = "GPL-3.0-only"
         framework {
             baseName = "RingModule"
             isStatic = false

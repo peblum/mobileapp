@@ -71,8 +71,8 @@ kotlin {
     cocoapods {
         version = "1.0"
         summary = "Core App"
-        homepage = "https://github.com/coredevices/CoreApp"
-        license = "proprietary"
+        homepage = "https://github.com/coredevices/mobileapp"
+        license = "GPL-3.0-only"
         ios.deploymentTarget = "15.6"
         podfile = project.file("../iosApp/Podfile")
 
