@@ -13,6 +13,7 @@ import coredevices.ring.RingDelegate
 import coredevices.util.auth.AppleAuthUtil
 import coredevices.util.CompanionDevice
 import coredevices.util.CoreConfigFlow
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.auth.GoogleAuthUtil
 import coredevices.util.IOSPlatform
 import coredevices.util.IosCompanionDevice
@@ -68,11 +69,15 @@ val iosDefaultModule = module {
     single {
         val pebbleDelegate = get<PebbleIosDelegate>()
         val configFlow = get<CoreConfigFlow>().flow
-        val ringDelegate = get<RingDelegate>()
+        val ringDelegate by lazy { get<RingDelegate>() }
         RequiredPermissions(
             flow { emit(pebbleDelegate.requiredPermissions()) }.combine(configFlow) { permissions, config ->
                 permissions +
-                        (if (config.enableIndex) ringDelegate.requiredRuntimePermissions() else emptySet()) +
+                        (if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED && config.enableIndex) {
+                            ringDelegate.requiredRuntimePermissions()
+                        } else {
+                            emptySet()
+                        }) +
                         (if (config.sttConfig.mode == CactusSTTMode.PlatformOnly) {
                             setOf(Permission.SpeechRecognizer)
                         } else emptySet())

@@ -37,6 +37,7 @@ import coredevices.coreapp.util.registerBluetoothPairingDebugLogger
 import coredevices.experimentalModule
 import coredevices.pebble.PebbleAppDelegate
 import coredevices.pebble.watchModule
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
 import coredevices.util.R
@@ -88,7 +89,9 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
         }, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
         registerBluetoothPairingDebugLogger(this)
         setupExceptionHandler()
-        experimentalDevices.appInit()
+        if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+            experimentalDevices.appInit()
+        }
         // Cactus telemetry is initialized via CommonAppDelegate.initCactus()
         pebbleAppDelegate.init()
         configureStrictMode()

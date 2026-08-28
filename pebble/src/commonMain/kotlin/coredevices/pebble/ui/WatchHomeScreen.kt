@@ -108,6 +108,7 @@ import coredevices.pebble.rememberLibPebble
 import coredevices.ui.M3Dialog
 import coredevices.util.CoreConfigFlow
 import coredevices.util.CoreConfigHolder
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
 import coredevices.util.description
@@ -158,7 +159,9 @@ class WatchHomeViewModel(
 ) : ViewModel() {
     val selectedTab = mutableStateOf(
         when {
-            coreConfig.value.enableIndex && libIndex.isAnyRingPaired() -> WatchHomeNavTab.Index
+            CommonBuildKonfig.INDEX_HARDWARE_ENABLED &&
+                coreConfig.value.enableIndex &&
+                libIndex.isAnyRingPaired() -> WatchHomeNavTab.Index
             libPebble.haveSeenFullyConnectedWatch() -> WatchHomeNavTab.WatchFaces
             else -> WatchHomeNavTab.Watches
         }
@@ -173,8 +176,12 @@ class WatchHomeViewModel(
     private val hiddenFlow = MutableStateFlow(false)
     val disableNextTransitionAnimation = mutableStateOf(false)
     val indexEnabled = coreConfig.flow.map {
-        it.enableIndex
-    }.stateIn(viewModelScope, SharingStarted.Lazily, coreConfig.value.enableIndex)
+        CommonBuildKonfig.INDEX_HARDWARE_ENABLED && it.enableIndex
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.Lazily,
+        CommonBuildKonfig.INDEX_HARDWARE_ENABLED && coreConfig.value.enableIndex,
+    )
     val healthTrackingEnabled = libPebble.healthSettings.map {
         it.trackingEnabled
     }.stateIn(viewModelScope, SharingStarted.Lazily, null)
@@ -405,6 +412,7 @@ fun WatchHomeScreen(
             }
         }
         if (
+            CommonBuildKonfig.INDEX_HARDWARE_ENABLED &&
             coreConfig.enableIndex &&
             !coreConfig.indexPermissionsConfirmed &&
             missingRequiredPermissions.isNotEmpty()
@@ -466,7 +474,10 @@ fun WatchHomeScreen(
             settings.setHasSeenWatchOnboarding(true)
             coreNav.navigateTo(CommonRoutes.WatchOnboardingRoute)
         }
-        if (rings.any { it is InterviewedIndexDevice && !hasSeenRingOnboarding }) {
+        if (
+            CommonBuildKonfig.INDEX_HARDWARE_ENABLED &&
+            rings.any { it is InterviewedIndexDevice && !hasSeenRingOnboarding }
+        ) {
             hasSeenRingOnboarding = true
             coreConfigHolder.update(coreConfig.copy(enableIndex = true))
             coreNav.navigateTo(CommonRoutes.RingOnboardingRoute)

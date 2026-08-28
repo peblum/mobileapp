@@ -152,6 +152,7 @@ import coredevices.ui.PebbleElevatedButton
 import coredevices.util.CompanionDevice
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigFlow
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
 import coredevices.util.PermissionResult
@@ -234,7 +235,8 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
         when {
             scanningBle -> ScanningStatus.ScanningWatchBle
             scanningClassic -> ScanningStatus.ScanningWatchClassic
-            scanningIndex -> ScanningStatus.ScanningRing
+            CommonBuildKonfig.INDEX_HARDWARE_ENABLED && scanningIndex ->
+                ScanningStatus.ScanningRing
             else -> ScanningStatus.NotScanning
         }
     }.collectAsState(ScanningStatus.NotScanning)
@@ -266,6 +268,7 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
     }
 
     LaunchedEffect(requestIndexCompanion) {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return@LaunchedEffect
         if (!requestIndexCompanion) return@LaunchedEffect
         val pairedRing = libIndex.rings.value.firstOrNull { it is KnownIndexDevice }
         if (screenUiContext != null && pairedRing != null) {
@@ -353,26 +356,28 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
                             )
                         },
                     )
-                    FloatingActionButtonMenuItem(
-                        onClick = {
-                            addFabExpanded = false
-                            uiContext?.let { ctx ->
-                                scope.launch {
-                                    // Ask for the scan permission before trusting the paired
-                                    // state: reconciling it against the platform bond list
-                                    // needs that permission.
-                                    if (!ensureScanPermission(ctx)) return@launch
-                                    if (libIndex.rings.value.any { it !is DiscoveredIndexDevice }) {
-                                        showIndexAlreadyPairedDialog = true
-                                    } else {
-                                        libIndex.startScan()
+                    if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+                        FloatingActionButtonMenuItem(
+                            onClick = {
+                                addFabExpanded = false
+                                uiContext?.let { ctx ->
+                                    scope.launch {
+                                        // Ask for the scan permission before trusting the paired
+                                        // state: reconciling it against the platform bond list
+                                        // needs that permission.
+                                        if (!ensureScanPermission(ctx)) return@launch
+                                        if (libIndex.rings.value.any { it !is DiscoveredIndexDevice }) {
+                                            showIndexAlreadyPairedDialog = true
+                                        } else {
+                                            libIndex.startScan()
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        icon = { Icon(Icons.Default.RadioButtonUnchecked, contentDescription = "Scan") },
-                        text = { Text("Add Index 01") },
-                    )
+                            },
+                            icon = { Icon(Icons.Default.RadioButtonUnchecked, contentDescription = "Scan") },
+                            text = { Text("Add Index 01") },
+                        )
+                    }
                     if (pebbleFeatures.supportsBtClassic()) {
                         FloatingActionButtonMenuItem(
                             onClick = {
@@ -441,7 +446,10 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
             val rings by libIndex.rings.collectAsState()
             val entriesFlow = remember {
                 combine(watchesFlow, libIndex.rings) { sortedWatches, rings ->
-                    rings.map { DeviceListEntry.Ring(it) } +
+                    rings
+                        .takeIf { CommonBuildKonfig.INDEX_HARDWARE_ENABLED }
+                        .orEmpty()
+                        .map { DeviceListEntry.Ring(it) } +
                     sortedWatches.map { DeviceListEntry.Watch(it) }
                 }
             }

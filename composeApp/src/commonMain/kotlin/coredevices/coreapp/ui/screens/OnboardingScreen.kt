@@ -55,6 +55,7 @@ import coredevices.ui.PebbleElevatedButton
 import coredevices.ui.SignInButtons
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.DoneInitialOnboarding
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
@@ -185,26 +186,30 @@ fun OnboardingScreen(
                                     viewModel.stage.value = OnboardingStage.Permissions
                                 },
                             )
+                            if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+                                DeviceChoiceCard(
+                                    label = "Index 01",
+                                    icon = Icons.Default.RadioButtonUnchecked,
+                                    onClick = {
+                                        viewModel.setIndexEnabled(true)
+                                        viewModel.deviceChoice.value = DeviceChoice.Index01
+                                        viewModel.stage.value = OnboardingStage.Permissions
+                                    },
+                                )
+                            }
+                        }
+                        if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+                            Spacer(modifier = Modifier.height(20.dp))
                             DeviceChoiceCard(
-                                label = "Index 01",
-                                icon = Icons.Default.RadioButtonUnchecked,
+                                label = "Both",
+                                icon = Icons.Default.Devices,
                                 onClick = {
                                     viewModel.setIndexEnabled(true)
-                                    viewModel.deviceChoice.value = DeviceChoice.Index01
+                                    viewModel.deviceChoice.value = DeviceChoice.Both
                                     viewModel.stage.value = OnboardingStage.Permissions
                                 },
                             )
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
-                        DeviceChoiceCard(
-                            label = "Both",
-                            icon = Icons.Default.Devices,
-                            onClick = {
-                                viewModel.setIndexEnabled(true)
-                                viewModel.deviceChoice.value = DeviceChoice.Both
-                                viewModel.stage.value = OnboardingStage.Permissions
-                            },
-                        )
                     }
                 }
 

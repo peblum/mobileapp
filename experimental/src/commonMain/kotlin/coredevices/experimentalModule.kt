@@ -6,6 +6,8 @@ import coredevices.haversine.CollectionIndexStorage
 import coredevices.haversine.KMPHaversineDebugDelegate
 import coredevices.haversine.KMPHaversineHacksDelegate
 import coredevices.indexai.agent.ServletRepository
+import coredevices.indexai.database.dao.ConversationMessageDao
+import coredevices.libindex.LibIndex
 import coredevices.libindex.database.BasePreferences
 import coredevices.libindex.di.libIndexModule
 import coredevices.ring.BuildKonfig
@@ -65,6 +67,7 @@ import coredevices.ring.agent.AgentNenya
 import coredevices.ring.api.NenyaModel
 import coredevices.ring.service.RecordingBackgroundScope
 import coredevices.ring.service.RingPairing
+import coredevices.ring.RingDelegate
 import coredevices.ring.service.RingSync
 import coredevices.ring.service.recordings.RecordingPreprocessor
 import coredevices.ring.service.recordings.RecordingProcessingQueue
@@ -220,7 +223,22 @@ val experimentalModule = module {
     singleOf(::RingSync)
     singleOf(::IndexNotificationManager)
     singleOf(::RingPairing)
-    singleOf(::ExperimentalDevices)
+    single {
+        ExperimentalDevices(
+            ringSyncProvider = lazy { get<RingSync>() },
+            recordingStorageProvider = lazy { get<RecordingStorage>() },
+            ringDelegateProvider = lazy { get<RingDelegate>() },
+            sandboxRepositoryProvider = lazy { get<McpSandboxRepository>() },
+            recordingRepositoryProvider = lazy { get<RecordingRepository>() },
+            conversationMessageDaoProvider = lazy { get<ConversationMessageDao>() },
+            preferencesProvider = lazy { get<Preferences>() },
+            shortcutActionHandlerProvider = lazy { get<ShortcutActionHandler>() },
+            libIndexProvider = lazy { get<LibIndex>() },
+            permissionRequesterProvider = lazy { get<PermissionRequester>() },
+            indexFeedSyncServiceProvider = lazy { get<IndexFeedSyncService>() },
+            defaultListsBootstrapProvider = lazy { get<DefaultListsBootstrap>() },
+        )
+    }
     singleOf(::PrefsCollectionIndexStorage) bind CollectionIndexStorage::class
     factory { HackyPermissionRequesterProvider { get<PermissionRequester>() } }
     singleOf(::LLMLocationProvider)

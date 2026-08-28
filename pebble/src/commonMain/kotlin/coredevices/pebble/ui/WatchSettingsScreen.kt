@@ -134,6 +134,7 @@ import coredevices.ui.M3Dialog
 import coredevices.ui.SignInDialog
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
 import coredevices.util.STTConfig
@@ -665,6 +666,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                             )
                         )
                     },
+                    show = { CommonBuildKonfig.INDEX_HARDWARE_ENABLED },
                 ),
                 basicSettingsToggleItem(
                     title = "Foreground Service",
