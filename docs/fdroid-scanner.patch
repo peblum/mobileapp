@@ -1,0 +1,396 @@
+diff --git a/androidApp/build.gradle.kts b/androidApp/build.gradle.kts
+index 47663cf2..27e94e46 100644
+--- a/androidApp/build.gradle.kts
++++ b/androidApp/build.gradle.kts
+@@ -5,10 +5,6 @@ plugins {
+ }
+ 
+ val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+-if (!fdroidBuild) {
+-    apply(plugin = "com.google.gms.google-services")
+-    apply(plugin = "com.google.firebase.crashlytics")
+-}
+ 
+ val properties = Properties().apply {
+     try {
+@@ -85,14 +81,6 @@ android {
+             if (!fdroidBuild) {
+                 if (localReleaseBuild) {
+                     signingConfig = signingConfigs.getByName("debug")
+-                    // Crashlytics regenerates a mapping-id resource every build
+-                    // (upToDateWhen=false), forcing aapt + a full R8 rerun even on
+-                    // null builds. Skip it for local release builds. Configured by
+-                    // name because the Crashlytics plugin classes are not on the
+-                    // F-Droid build's script classpath.
+-                    extensions.getByName("firebaseCrashlytics").withGroovyBuilder {
+-                        "setMappingFileUploadEnabled"(false)
+-                    }
+                 } else {
+                     signingConfig = signingConfigs.getByName("release")
+                 }
+@@ -103,11 +91,6 @@ android {
+         getByName("debug") {
+             isMinifyEnabled = false
+             isDebuggable = true
+-            if (!fdroidBuild) {
+-                extensions.getByName("firebaseCrashlytics").withGroovyBuilder {
+-                    "setMappingFileUploadEnabled"(false)
+-                }
+-            }
+         }
+     }
+     sourceSets {
+@@ -127,11 +110,7 @@ dependencies {
+     // Components this module's manifest declares, so lint can resolve them.
+     implementation(project(":util"))
+     implementation(libs.androidx.core.ktx)
+-    if (fdroidBuild) {
+-        implementation(project(":health-stubs"))
+-    } else {
+-        implementation(libs.health.kmp)
+-    }
++    implementation(project(":health-stubs"))
+ 
+     androidTestImplementation(libs.androidx.test.runner)
+     androidTestImplementation(libs.androidx.test.rules)
+@@ -140,14 +119,8 @@ dependencies {
+     androidTestImplementation(libs.koin.android)
+     androidTestImplementation(libs.coroutines)
+     androidTestImplementation(libs.kotlin.test)
+-    if (fdroidBuild) {
+-        androidTestImplementation(project(":firebase-stubs"))
+-        androidTestImplementation(project(":cactus-stubs"))
+-    } else {
+-        androidTestImplementation(platform(libs.firebase.bom))
+-        androidTestImplementation(libs.firebase.auth)
+-        androidTestImplementation(project(":cactus"))
+-    }
++    androidTestImplementation(project(":firebase-stubs"))
++    androidTestImplementation(project(":cactus-stubs"))
+     androidTestImplementation(project(":experimental"))
+     androidTestImplementation(project(":libindex"))
+     androidTestImplementation(project(":index-ai"))
+diff --git a/composeApp/build.gradle.kts b/composeApp/build.gradle.kts
+index 68bf1f04..83b01a46 100644
+--- a/composeApp/build.gradle.kts
++++ b/composeApp/build.gradle.kts
+@@ -185,19 +185,7 @@ kotlin {
+                 implementation(libs.coroutines.android)
+                 implementation(libs.androidx.work)
+                 implementation(libs.coil.gif)
+-                if (fdroidBuild) {
+-                    implementation(project(":haversine-stubs"))
+-                } else {
+-                    implementation(libs.coredevices.haversine)
+-                }
+-                if (!fdroidBuild) {
+-                    implementation(project.dependencies.platform(libs.firebase.bom))
+-                    implementation(libs.firebase.crashlytics.ndk)
+-                    implementation(libs.gms.auth)
+-                    implementation(libs.identity.google)
+-                    implementation(libs.play.update)
+-                    implementation(libs.play.update.ktx)
+-                }
++                implementation(project(":haversine-stubs"))
+             }
+         }
+         getByName("androidHostTest").dependencies {
+@@ -205,7 +193,6 @@ kotlin {
+         }
+         iosMain.dependencies {
+             implementation(libs.ktor.client.darwin)
+-            implementation(libs.crashkios)
+         }
+         commonTest.dependencies {
+             implementation(libs.kotlin.test)
+@@ -234,15 +221,9 @@ kotlin {
+             implementation(libs.coil)
+             implementation(libs.coil.svg)
+ 
+-            if (fdroidBuild) {
+-                implementation(project(":firebase-stubs"))
+-                implementation(project(":health-stubs"))
+-                implementation(project(":notifier-stubs"))
+-            } else {
+-                implementation(libs.firebase.auth)
+-                implementation(libs.firebase.firestore)
+-                implementation(libs.firebase.crashlytics)
+-            }
++            implementation(project(":firebase-stubs"))
++            implementation(project(":health-stubs"))
++            implementation(project(":notifier-stubs"))
+ 
+             implementation(libs.ktor.client.core)
+             implementation(libs.ktor.client.contentNegotiation)
+@@ -257,10 +238,6 @@ kotlin {
+             implementation(project(":libindex"))
+             implementation(project(":index-ai"))
+             api(project(":mcp"))
+-            if (!fdroidBuild) {
+-                implementation(libs.kmpnotifier)
+-                implementation(libs.health.kmp)
+-            }
+         }
+     }
+ }
+diff --git a/experimental/build.gradle.kts b/experimental/build.gradle.kts
+index c9a7fcf2..e382d687 100644
+--- a/experimental/build.gradle.kts
++++ b/experimental/build.gradle.kts
+@@ -203,34 +203,19 @@ kotlin {
+                 implementation(libs.room.paging)
+                 implementation(libs.sqlite.bundled)
+ 
+-                if (fdroidBuild) {
+-                    implementation(project(":firebase-stubs"))
+-                } else {
+-                    implementation(libs.firebase.auth)
+-                    implementation(libs.firebase.firestore)
+-                    implementation(libs.firebase.crashlytics)
+-                    implementation(libs.firebase.storage)
+-                }
++                implementation(project(":firebase-stubs"))
+ 
+                 implementation(project(":mcp"))
+                 implementation(project(":index-ai"))
+                 implementation(project(":resampler"))
+-                if (fdroidBuild) {
+-                    implementation(project(":haversine-stubs"))
+-                } else {
+-                    implementation(libs.coredevices.haversine)
+-                }
+-                implementation(project(if (fdroidBuild) ":cactus-stubs" else ":cactus"))
++                implementation(project(":haversine-stubs"))
++                implementation(project(":cactus-stubs"))
+                 implementation(project(":libindex"))
+                 implementation(project(":libpebble3"))
+                 implementation(libs.settings)
+                 implementation(libs.kable)
+                 implementation(libs.uri)
+-                if (fdroidBuild) {
+-                    implementation(project(":notifier-stubs"))
+-                } else {
+-                    implementation(libs.kmpnotifier)
+-                }
++                implementation(project(":notifier-stubs"))
+             }
+         }
+ 
+@@ -257,11 +242,6 @@ kotlin {
+                 implementation(libs.androidx.credentials)
+                 implementation(libs.zxing.core)
+                 implementation(libs.androidx.documentfile)
+-                if (!fdroidBuild) {
+-                    // gitlive's compile variant declares com.google.firebase:* without versions.
+-                    implementation(project.dependencies.platform(libs.firebase.bom))
+-                    implementation(libs.identity.google)
+-                }
+             }
+         }
+ 
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+index cc0760f4..3cdfb72b 100644
+--- a/gradle/libs.versions.toml
++++ b/gradle/libs.versions.toml
+@@ -54,16 +54,11 @@ algolia = "3.46.0"
+ coredevices-speex = "c61d18a"
+ mcp = "0.15.0"
+ glance = "1.1.1"
+-#noinspection GradleDependency
+-coredevices-haversine = "f801265"
+-#noinspection GradleDependency
+-coredevices-krisp = "811c72e"
+ junit-ext = "1.3.0"
+ paging = "3.5.0"
+ reorderable = "3.1.0"
+ zxing = "3.5.4"
+ compass = "3.2.0"
+-health-kmp = "1.4.0"
+ documentfile = "1.1.0"
+ 
+ [plugins]
+@@ -160,7 +155,6 @@ coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
+ uri = { group = "com.eygraber", name = "uri-kmp", version.ref = "uri" }
+ algolia = { module = "com.algolia:algoliasearch-client-kotlin", version.ref = "algolia" }
+ coredevices-speex = { group = "io.github.coredevices.speex", name = "speex", version.ref = "coredevices-speex" }
+-coredevices-haversine = { group = "io.github.coredevices.haversine", name = "haversine", version.ref = "coredevices-haversine" }
+ modelcontextprotocol-client = { module = "io.modelcontextprotocol:kotlin-sdk-client", version.ref = "mcp" }
+ modelcontextprotocol-core = { module = "io.modelcontextprotocol:kotlin-sdk-core", version.ref = "mcp" }
+ modelcontextprotocol-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp" }
+@@ -174,5 +168,3 @@ compass-geocoder = { module = "dev.jordond.compass:geocoder", version.ref = "com
+ compass-geocoder-mobile = { module = "dev.jordond.compass:geocoder-mobile", version.ref = "compass" }
+ compass-autocomplete = { module = "dev.jordond.compass:autocomplete", version.ref = "compass" }
+ compass-autocomplete-mobile = { module = "dev.jordond.compass:autocomplete-mobile", version.ref = "compass" }
+-coredevices-krispPrivate = { group = "coredevices.krispkmp", name = "library", version.ref = "coredevices-krisp" }
+-health-kmp = { module = "com.viktormykhailiv:health-kmp", version.ref = "health-kmp" }
+diff --git a/index-ai/build.gradle.kts b/index-ai/build.gradle.kts
+index d2dda602..d07cf70e 100644
+--- a/index-ai/build.gradle.kts
++++ b/index-ai/build.gradle.kts
+@@ -76,11 +76,7 @@ kotlin {
+                 implementation(libs.room.runtime)
+                 implementation(libs.room.paging)
+                 implementation(libs.kotlinx.datetime)
+-                if (fdroidBuild) {
+-                    implementation(project(":firebase-stubs"))
+-                } else {
+-                    implementation(libs.firebase.firestore)
+-                }
++                implementation(project(":firebase-stubs"))
+ 
+                 implementation(project(":mcp"))
+             }
+@@ -93,22 +89,6 @@ kotlin {
+             }
+         }
+ 
+-        androidMain {
+-            dependencies {
+-                // The Firebase BOM resolves the native Android Firebase
+-                // SDK versions that gitlive's `firebase-firestore-android`
+-                // pulls in transitively. Without it, gradle can't pick a
+-                // version for `com.google.firebase:firebase-firestore`
+-                // and the Android compile fails. composeApp configures
+-                // the BOM for app-level deps but Gradle doesn't propagate
+-                // it back up to library modules that consume gitlive
+-                // directly, so we re-declare it here.
+-                if (!fdroidBuild) {
+-                    implementation(project.dependencies.platform(libs.firebase.bom))
+-                }
+-            }
+-        }
+-
+         getByName("androidDeviceTest") {
+             dependencies {
+                 implementation(libs.androidx.test.runner)
+diff --git a/libindex/build.gradle.kts b/libindex/build.gradle.kts
+index 1cd60b2a..36b40fe1 100644
+--- a/libindex/build.gradle.kts
++++ b/libindex/build.gradle.kts
+@@ -93,12 +93,8 @@ kotlin {
+                 implementation(libs.ktor.client.logging)
+                 implementation(libs.webview)
+                 implementation(libs.uri)
+-                if (fdroidBuild) {
+-                    implementation(project(":haversine-stubs"))
+-                } else {
+-                    implementation(libs.coredevices.haversine)
+-                }
+-                implementation(project(if (fdroidBuild) ":cactus-stubs" else ":cactus"))
++                implementation(project(":haversine-stubs"))
++                implementation(project(":cactus-stubs"))
+                 implementation(project(":libpebble3"))
+                 implementation(project(":index-ai"))
+                 implementation(libs.kmpio)
+diff --git a/libpebble3/build.gradle.kts b/libpebble3/build.gradle.kts
+index 652a50f2..92f4acbb 100644
+--- a/libpebble3/build.gradle.kts
++++ b/libpebble3/build.gradle.kts
+@@ -11,19 +11,6 @@ plugins {
+     alias(libs.plugins.kotlinx.atomicfu)
+ }
+ 
+-publishing {
+-    repositories {
+-        maven {
+-            name = "GitHubPackages"
+-            url = uri("https://maven.pkg.github.com/pebble-dev/libpebblecommon")
+-            credentials {
+-                username = System.getenv("GITHUB_ACTOR")
+-                password = System.getenv("GITHUB_TOKEN")
+-            }
+-        }
+-    }
+-}
+-
+ room {
+     schemaDirectory("schema")
+ }
+diff --git a/pebble/build.gradle.kts b/pebble/build.gradle.kts
+index 6be51b2f..0a8ccc06 100644
+--- a/pebble/build.gradle.kts
++++ b/pebble/build.gradle.kts
+@@ -76,11 +76,7 @@ kotlin {
+         commonMain {
+             dependencies {
+                 implementation(project(":libpebble3"))
+-                if (fdroidBuild) {
+-                    implementation(project(":health-stubs"))
+-                } else {
+-                    implementation(libs.health.kmp)
+-                }
++                implementation(project(":health-stubs"))
+                 implementation(compose.runtime)
+                 implementation(compose.foundation)
+                 implementation(libs.compose.material3)
+@@ -108,15 +104,9 @@ kotlin {
+                 implementation(libs.webview)
+                 implementation(libs.backhandler)
+                 api(libs.uri)
+-                if (fdroidBuild) {
+-                    implementation(project(":firebase-stubs"))
+-                } else {
+-                    implementation(libs.firebase.crashlytics)
+-                    implementation(libs.firebase.auth)
+-                    implementation(libs.firebase.firestore)
+-                }
++                implementation(project(":firebase-stubs"))
+                 implementation(libs.coredevices.speex)
+-                api(project(if (fdroidBuild) ":cactus-stubs" else ":cactus"))
++                api(project(":cactus-stubs"))
+                 api(libs.algolia)
+                 implementation(libs.reorderable)
+                 implementation(libs.compass.geocoder)
+diff --git a/util/build.gradle.kts b/util/build.gradle.kts
+index 79c781f1..564056f2 100644
+--- a/util/build.gradle.kts
++++ b/util/build.gradle.kts
+@@ -116,12 +116,7 @@ kotlin {
+                 implementation(libs.serialization)
+                 implementation(libs.koin.core)
+                 implementation(libs.koin.compose)
+-                if (fdroidBuild) {
+-                    implementation(project(":firebase-stubs"))
+-                } else {
+-                    implementation(libs.firebase.auth)
+-                    implementation(libs.firebase.firestore)
+-                }
++                implementation(project(":firebase-stubs"))
+                 implementation(libs.ktor.client.core)
+                 implementation(libs.ktor.client.contentNegotiation)
+                 implementation(libs.ktor.client.encoding)
+@@ -130,18 +125,14 @@ kotlin {
+                 implementation(libs.webview)
+                 implementation(libs.uri)
+                 implementation(compose.components.uiToolingPreview)
+-                implementation(project(if (fdroidBuild) ":cactus-stubs" else ":cactus"))
++                implementation(project(":cactus-stubs"))
+                 implementation(project(":libpebble3"))
+                 implementation(project(":libindex"))
+                 implementation(libs.kmpio)
+                 api(libs.room.runtime)
+                 implementation(libs.sqlite.bundled)
+                 api(libs.settings)
+-                if (useKrispArtifact) {
+-                    implementation(libs.coredevices.krispPrivate)
+-                } else {
+-                    implementation(project(":krisp-stubs"))
+-                }
++                implementation(project(":krisp-stubs"))
+             }
+         }
+ 
+@@ -163,13 +154,6 @@ kotlin {
+                 implementation(libs.androidx.activity.compose)
+                 implementation(libs.ktor.client.okhttp)
+                 implementation(compose.uiTooling)
+-                if (!fdroidBuild) {
+-                    // gitlive's compile variant declares com.google.firebase:* without versions.
+-                    implementation(project.dependencies.platform(libs.firebase.bom))
+-                    implementation(libs.play.update)
+-                    implementation(libs.play.update.ktx)
+-                    implementation(libs.mixpanel.android)
+-                }
+             }
+         }
+ 

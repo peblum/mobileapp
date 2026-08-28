@@ -2,7 +2,9 @@
 
 Welcome to the official source code for the Pebble mobile app. Download the app from the [iOS Appstore](https://apps.apple.com/us/app/pebble-core/id6743771967) or [Google Play](https://play.google.com/store/apps/details?id=coredevices.coreapp&hl=en_US). The app is entirely open source. 
 
-This app supports ALL Pebble watches, and Pebble Index 01 rings.
+Normal upstream builds also support Pebble Index 01 rings. The F-Droid build
+omits Index hardware support because its Haversine transport is not built from
+publicly available source.
 
 **Note: this is a public copy of our internal repo, where we do active development; it is synced regularly, but this process is manual so it may lag behind.
 
@@ -30,7 +32,7 @@ Module map:
 | `index-ai` | The "Index" AI assistant and its data layer (transcription, notes) |
 | `libindex` | Index device plumbing: pairing, transfer, storage |
 | `mcp` | MCP (Model Context Protocol) client/tool integration |
-| `cactus`, `resampler`, `krisp-stubs` | Audio/ML support: on-device LLM inference, audio resampling, and API stubs for the private Krisp noise-cancellation integration |
+| `cactus`, `resampler`, `*-stubs` | Audio/ML and F-Droid support: on-device LLM inference, audio resampling, and integration-specific compatibility modules for services unavailable in free builds |
 | `blobannotations`, `blobdbgen` | KSP annotations + code generator for BlobDB records |
 | `util` | Shared utilities (logging, IO, …) |
 
@@ -45,7 +47,8 @@ Several features (e.g. bug reporting, google login, memfault, online transcripti
 ### Android
 * Compile on Android with `./gradlew :androidApp:assembleRelease`.
 * You will need a `google-services.json` in `androidApp/src` to compile on Android (an examples with dummy values is provided in `google-services-dummy.json`).
-* You will need a keystore with some keys if you intend to do a release build on Android (unless you use `LOCAL_RELEASE_BUILD=true` in `gradle.properties`).
+* You will need a keystore with some keys if you intend to do a release build on Android (unless you use `LOCAL_RELEASE_BUILD=true` in `local.properties`). F-Droid builds intentionally leave release signing to F-Droid.
+* Build the F-Droid Android variant with `./gradlew -PfdroidBuild=true :androidApp:assembleRelease`. This build does not need `google-services.json` and disables Firebase, Google Play Services, Play Core, Mixpanel, Cactus native code, Haversine/Index hardware support, Krisp, push messaging, and platform health sync. Submission to the main F-Droid repository also requires scanner preparation in its build metadata; see `docs/fdroid.md`.
 
 ### iOS
 
