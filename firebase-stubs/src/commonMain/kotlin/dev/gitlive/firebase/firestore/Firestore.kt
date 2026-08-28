@@ -48,6 +48,7 @@ open class Query(
 
     fun snapshots(includeMetadataChanges: Boolean = false): Flow<QuerySnapshot> = flowOf(QuerySnapshot())
     suspend fun get(source: Source = Source.DEFAULT): QuerySnapshot = QuerySnapshot()
+    suspend fun count(): Long = 0
     fun where(block: QueryScope.() -> Any?): Query = this
     fun orderBy(field: String, direction: Direction = Direction.ASCENDING): Query = this
     fun limit(limit: Int): Query = this

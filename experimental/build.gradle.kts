@@ -245,9 +245,6 @@ kotlin {
         androidMain {
             if (fdroidBuild) {
                 kotlin.srcDir("src/androidFdroidMain/kotlin")
-                kotlin.exclude(
-                    "coredevices/ring/database/firestore/dao/AggregateCount.android.kt",
-                )
             }
             dependencies {
                 implementation(libs.androidx.glance)
@@ -309,5 +306,13 @@ dependencies {
     if (!ideSync) {
         //add("kspIosX64", libs.room.compiler)
         add("kspIosSimulatorArm64", libs.room.compiler)
+    }
+}
+
+if (fdroidBuild) {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        exclude(
+            "coredevices/ring/database/firestore/dao/AggregateCount.android.kt",
+        )
     }
 }

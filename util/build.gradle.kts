@@ -154,10 +154,6 @@ kotlin {
         androidMain {
             if (fdroidBuild) {
                 kotlin.srcDir("src/androidFdroidMain/kotlin")
-                kotlin.exclude(
-                    "AppUpdate.android.kt",
-                    "coredevices/analytics/Analytics.android.kt",
-                )
             }
             dependencies {
                 implementation(libs.androidx.activity.compose)
@@ -229,5 +225,14 @@ buildkonfig {
         buildConfigField(FieldSpec.Type.STRING, "CACTUS_STT_MODEL", providers.gradleProperty("cactusSttModel").get())
         buildConfigField(FieldSpec.Type.STRING, "CACTUS_LM_MODEL_NAME", "needle-pebble-ft")
         buildConfigField(FieldSpec.Type.STRING, "CACTUS_WEIGHTS_VERSION", providers.gradleProperty("cactusWeightsVersion").get())
+    }
+}
+
+if (fdroidBuild) {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        exclude(
+            "AppUpdate.android.kt",
+            "coredevices/analytics/Analytics.android.kt",
+        )
     }
 }

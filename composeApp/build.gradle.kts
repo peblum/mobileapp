@@ -170,11 +170,6 @@ kotlin {
         androidMain {
             if (fdroidBuild) {
                 kotlin.srcDir("src/androidFdroidMain/kotlin")
-                kotlin.exclude(
-                    "coredevices/coreapp/auth/AppleAuthUtil.android.kt",
-                    "coredevices/coreapp/auth/GithubAuthUtil.android.kt",
-                    "coredevices/coreapp/auth/GoogleAuthUtil.android.kt",
-                )
             }
             dependencies {
                 implementation(compose.preview)
@@ -267,4 +262,15 @@ kotlin {
 
 compose.resources {
     packageOfResClass = "coreapp.composeapp.generated.resources"
+}
+
+if (fdroidBuild) {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        exclude(
+            "coredevices/coreapp/auth/AppleAuthUtil.android.kt",
+            "coredevices/coreapp/auth/GithubAuthUtil.android.kt",
+            "coredevices/coreapp/auth/GoogleAuthUtil.android.kt",
+            "coredevices/coreapp/auth/OAuthProviderSignIn.android.kt",
+        )
+    }
 }

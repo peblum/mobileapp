@@ -1,5 +1,5 @@
 diff --git a/androidApp/build.gradle.kts b/androidApp/build.gradle.kts
-index 490ca34d..eb41d116 100644
+index 29b447f5..73a6c8c6 100644
 --- a/androidApp/build.gradle.kts
 +++ b/androidApp/build.gradle.kts
 @@ -5,10 +5,6 @@ plugins {
@@ -13,7 +13,7 @@ index 490ca34d..eb41d116 100644
  
  val properties = Properties().apply {
      try {
-@@ -93,14 +89,6 @@ android {
+@@ -97,14 +93,6 @@ android {
              if (!fdroidBuild) {
                  if (localReleaseBuild) {
                      signingConfig = signingConfigs.getByName("debug")
@@ -28,7 +28,7 @@ index 490ca34d..eb41d116 100644
                  } else {
                      signingConfig = signingConfigs.getByName("release")
                  }
-@@ -111,11 +99,6 @@ android {
+@@ -115,11 +103,6 @@ android {
          getByName("debug") {
              isMinifyEnabled = false
              isDebuggable = true
@@ -40,9 +40,9 @@ index 490ca34d..eb41d116 100644
          }
          if (fdroidBuild) {
              create("ci") {
-@@ -157,11 +140,7 @@ dependencies {
-     // Components this module's manifest declares, so lint can resolve them.
+@@ -162,11 +145,7 @@ dependencies {
      implementation(project(":util"))
+     implementation(project(":experimental"))
      implementation(libs.androidx.core.ktx)
 -    if (fdroidBuild) {
 -        implementation(project(":health-stubs"))
@@ -53,10 +53,10 @@ index 490ca34d..eb41d116 100644
  
      androidTestImplementation(libs.androidx.test.runner)
      androidTestImplementation(libs.androidx.test.rules)
-@@ -170,14 +149,8 @@ dependencies {
-     androidTestImplementation(libs.koin.android)
+@@ -176,14 +155,8 @@ dependencies {
      androidTestImplementation(libs.coroutines)
      androidTestImplementation(libs.kotlin.test)
+     androidTestImplementation(libs.kotlinx.datetime)
 -    if (fdroidBuild) {
 -        androidTestImplementation(project(":firebase-stubs"))
 -        androidTestImplementation(project(":cactus-stubs"))
@@ -68,13 +68,13 @@ index 490ca34d..eb41d116 100644
 +    androidTestImplementation(project(":firebase-stubs"))
 +    androidTestImplementation(project(":cactus-stubs"))
      androidTestImplementation(project(":experimental"))
+     androidTestImplementation(project(":pebble"))
      androidTestImplementation(project(":libindex"))
-     androidTestImplementation(project(":index-ai"))
 diff --git a/composeApp/build.gradle.kts b/composeApp/build.gradle.kts
-index 68bf1f04..83b01a46 100644
+index bb37da0c..5f67f206 100644
 --- a/composeApp/build.gradle.kts
 +++ b/composeApp/build.gradle.kts
-@@ -185,19 +185,7 @@ kotlin {
+@@ -180,19 +180,7 @@ kotlin {
                  implementation(libs.coroutines.android)
                  implementation(libs.androidx.work)
                  implementation(libs.coil.gif)
@@ -95,7 +95,7 @@ index 68bf1f04..83b01a46 100644
              }
          }
          getByName("androidHostTest").dependencies {
-@@ -205,7 +193,6 @@ kotlin {
+@@ -200,7 +188,6 @@ kotlin {
          }
          iosMain.dependencies {
              implementation(libs.ktor.client.darwin)
@@ -103,7 +103,7 @@ index 68bf1f04..83b01a46 100644
          }
          commonTest.dependencies {
              implementation(libs.kotlin.test)
-@@ -234,15 +221,9 @@ kotlin {
+@@ -229,15 +216,9 @@ kotlin {
              implementation(libs.coil)
              implementation(libs.coil.svg)
  
@@ -122,7 +122,7 @@ index 68bf1f04..83b01a46 100644
  
              implementation(libs.ktor.client.core)
              implementation(libs.ktor.client.contentNegotiation)
-@@ -257,10 +238,6 @@ kotlin {
+@@ -252,10 +233,6 @@ kotlin {
              implementation(project(":libindex"))
              implementation(project(":index-ai"))
              api(project(":mcp"))
@@ -134,7 +134,7 @@ index 68bf1f04..83b01a46 100644
      }
  }
 diff --git a/experimental/build.gradle.kts b/experimental/build.gradle.kts
-index c9a7fcf2..e382d687 100644
+index 532f9d26..53437c03 100644
 --- a/experimental/build.gradle.kts
 +++ b/experimental/build.gradle.kts
 @@ -203,34 +203,19 @@ kotlin {
@@ -176,7 +176,7 @@ index c9a7fcf2..e382d687 100644
              }
          }
  
-@@ -257,11 +242,6 @@ kotlin {
+@@ -254,11 +239,6 @@ kotlin {
                  implementation(libs.androidx.credentials)
                  implementation(libs.zxing.core)
                  implementation(libs.androidx.documentfile)
@@ -342,7 +342,7 @@ index 6be51b2f..0a8ccc06 100644
                  implementation(libs.reorderable)
                  implementation(libs.compass.geocoder)
 diff --git a/util/build.gradle.kts b/util/build.gradle.kts
-index 79c781f1..564056f2 100644
+index 89856b54..aa49fd61 100644
 --- a/util/build.gradle.kts
 +++ b/util/build.gradle.kts
 @@ -116,12 +116,7 @@ kotlin {
@@ -380,7 +380,7 @@ index 79c781f1..564056f2 100644
              }
          }
  
-@@ -163,13 +154,6 @@ kotlin {
+@@ -159,13 +150,6 @@ kotlin {
                  implementation(libs.androidx.activity.compose)
                  implementation(libs.ktor.client.okhttp)
                  implementation(compose.uiTooling)

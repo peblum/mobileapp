@@ -54,6 +54,10 @@ android {
     namespace = "coredevices.coreapp"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
+    buildFeatures {
+        resValues = fdroidBuild
+    }
+
     if (!fdroidBuild && !localReleaseBuild) {
         signingConfigs {
             create("release") {
@@ -163,6 +167,7 @@ dependencies {
     implementation(project(":composeApp"))
     // Components this module's manifest declares, so lint can resolve them.
     implementation(project(":util"))
+    implementation(project(":experimental"))
     implementation(libs.androidx.core.ktx)
     if (fdroidBuild) {
         implementation(project(":health-stubs"))
@@ -177,6 +182,7 @@ dependencies {
     androidTestImplementation(libs.koin.android)
     androidTestImplementation(libs.coroutines)
     androidTestImplementation(libs.kotlin.test)
+    androidTestImplementation(libs.kotlinx.datetime)
     if (fdroidBuild) {
         androidTestImplementation(project(":firebase-stubs"))
         androidTestImplementation(project(":cactus-stubs"))
@@ -186,6 +192,7 @@ dependencies {
         androidTestImplementation(project(":cactus"))
     }
     androidTestImplementation(project(":experimental"))
+    androidTestImplementation(project(":pebble"))
     androidTestImplementation(project(":libindex"))
     androidTestImplementation(project(":index-ai"))
     androidTestImplementation(project(":mcp"))
