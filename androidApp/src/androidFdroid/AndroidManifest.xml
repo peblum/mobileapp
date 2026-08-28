@@ -48,6 +48,48 @@
     </queries>
 
     <application>
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter
+                android:label="@string/intent_filter_notion_login"
+                tools:node="remove">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="voiceapp" />
+            </intent-filter>
+            <intent-filter
+                android:autoVerify="true"
+                tools:node="remove">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="cloud.repebble.com" />
+                <data android:path="/githubAuth" />
+            </intent-filter>
+            <intent-filter tools:node="remove">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\.pbl" />
+                <data android:pathPattern=".*\.pbw" />
+                <data android:pathPattern=".*\.pbz" />
+            </intent-filter>
+            <intent-filter tools:node="remove">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data
+                    android:mimeType="*/*"
+                    android:scheme="content" />
+            </intent-filter>
+        </activity>
         <meta-data
             android:name="firebase_crashlytics_collection_enabled"
             tools:node="remove" />
@@ -75,12 +117,15 @@
             tools:node="remove" />
         <activity
             android:name="coredevices.ring.service.InferenceActivity"
+            tools:ignore="Instantiatable"
             tools:node="remove" />
         <activity
             android:name="coredevices.ring.ShareToIndexNoteActivity"
+            tools:ignore="Instantiatable"
             tools:node="remove" />
         <activity
             android:name="coredevices.ring.ShareToIndexReminderActivity"
+            tools:ignore="Instantiatable"
             tools:node="remove" />
         <service
             android:name="coredevices.coreapp.BugReportService"
