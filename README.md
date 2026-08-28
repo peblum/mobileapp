@@ -49,6 +49,10 @@ Several features (e.g. bug reporting, google login, memfault, online transcripti
 * You will need a `google-services.json` in `androidApp/src` to compile on Android (an examples with dummy values is provided in `google-services-dummy.json`).
 * You will need a keystore with some keys if you intend to do a release build on Android (unless you use `LOCAL_RELEASE_BUILD=true` in `local.properties`). F-Droid builds intentionally leave release signing to F-Droid.
 * Build the F-Droid Android variant with `./gradlew -PfdroidBuild=true :androidApp:assembleRelease`. This build does not need `google-services.json` and disables Firebase, Google Play Services, Play Core, Mixpanel, Cactus native code, Haversine/Index hardware support, Krisp, push messaging, and platform health sync. Submission to the main F-Droid repository also requires scanner preparation in its build metadata; see `docs/fdroid.md`.
+* Forgejo Actions is configured to publish installable pull-request artifacts
+  and signed `master` snapshots from the same free dependency graph. Runner,
+  signing, and package-registry setup is documented in
+  `docs/forgejo-apk-ci.md`.
 
 ### iOS
 
