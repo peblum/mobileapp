@@ -96,7 +96,7 @@ class ForkFirmwareReleasesTest {
         val payload = """
             [
               {
-                "url": "https://api.github.com/repos/tockstone/Tockstone/releases/1",
+                "url": "https://api.github.com/repos/peblum/Peblum/releases/1",
                 "tag_name": "v4.36.2",
                 "name": "v4.36.2",
                 "draft": false,
@@ -105,7 +105,7 @@ class ForkFirmwareReleasesTest {
                 "assets": [
                   {
                     "name": "normal_asterix_v4.36.2.pbz",
-                    "browser_download_url": "https://github.com/tockstone/Tockstone/releases/download/v4.36.2/normal_asterix_v4.36.2.pbz",
+                    "browser_download_url": "https://github.com/peblum/Peblum/releases/download/v4.36.2/normal_asterix_v4.36.2.pbz",
                     "size": 123456
                   }
                 ]
@@ -115,7 +115,7 @@ class ForkFirmwareReleasesTest {
         val releases = json.decodeFromString<List<GithubRelease>>(payload)
         val selected = selectForkFirmware(releases, WatchHardwarePlatform.CORE_ASTERIX)
         assertEquals(
-            "https://github.com/tockstone/Tockstone/releases/download/v4.36.2/normal_asterix_v4.36.2.pbz",
+            "https://github.com/peblum/Peblum/releases/download/v4.36.2/normal_asterix_v4.36.2.pbz",
             selected?.url,
         )
         assertEquals("Release notes", selected?.notes)

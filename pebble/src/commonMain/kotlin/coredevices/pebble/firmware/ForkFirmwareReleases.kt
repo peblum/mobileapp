@@ -22,9 +22,9 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
 object ForkFirmwareSource {
-    const val NAME = "Tockstone"
-    const val GITHUB_OWNER = "tockstone"
-    const val GITHUB_REPO = "Tockstone"
+    const val NAME = "Peblum"
+    const val GITHUB_OWNER = "peblum"
+    const val GITHUB_REPO = "Peblum"
 }
 
 data class ForkFirmwareRelease(
