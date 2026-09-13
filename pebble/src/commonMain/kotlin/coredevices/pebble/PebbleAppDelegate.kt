@@ -10,6 +10,7 @@ import coredevices.database.insertDefaultWeatherLocationOnce
 import coredevices.firestore.UsersDao
 import coredevices.pebble.firmware.BatteryChargedNotifier
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
+import coredevices.pebble.firmware.ForkFirmwareUpdatePrompt
 import coredevices.pebble.services.AppstoreSourceInitializer
 import coredevices.pebble.services.AnalyticsHeartbeatQueue
 import coredevices.pebble.services.MemfaultChunkQueue
@@ -60,6 +61,7 @@ class PebbleAppDelegate(
     private val analyticsHeartbeatQueue: AnalyticsHeartbeatQueue,
     private val pebbleWebServices: PebbleWebServices,
     private val batteryChargedNotifier: BatteryChargedNotifier,
+    private val forkFirmwareUpdatePrompt: ForkFirmwareUpdatePrompt,
 ) {
     private val logger = Logger.withTag("PebbleAppDelegate")
 
@@ -162,6 +164,19 @@ class PebbleAppDelegate(
                             heartbeatWatchConnectGoalName(watchType),
                             connectGoal,
                             clock.now(),
+                        )
+                    }
+                }
+            }
+            GlobalScope.launch {
+                libPebble.watches.collect { watches ->
+                    watches.filterIsInstance<ConnectedPebbleDevice>().forEach { watch ->
+                        forkFirmwareUpdatePrompt.maybeOffer(
+                            identifier = watch.identifier,
+                            watchName = watch.displayName(),
+                            watchInfo = watch.watchInfo,
+                            updateInProgress = watch.firmwareUpdateState
+                                    !is FirmwareUpdater.FirmwareUpdateStatus.NotInProgress,
                         )
                     }
                 }

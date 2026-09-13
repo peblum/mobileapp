@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,6 +26,8 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
@@ -104,6 +107,8 @@ import coredevices.libindex.device.InterviewedIndexDevice
 import coredevices.libindex.device.KnownIndexDevice
 import coredevices.pebble.PebbleDeepLinkHandler
 import coredevices.pebble.Platform
+import coredevices.pebble.firmware.ForkFirmwareSource
+import coredevices.pebble.firmware.ForkFirmwareUpdatePrompt
 import coredevices.pebble.rememberLibPebble
 import coredevices.ui.M3Dialog
 import coredevices.util.CoreConfigFlow
@@ -348,6 +353,37 @@ fun WatchHomeScreen(
                 dismissButton = {
                     TextButton(onClick = deepLinkHandler::dismissPendingFirmwareSideload) {
                         Text("Cancel")
+                    }
+                },
+            )
+        }
+        val forkFirmwareUpdatePrompt: ForkFirmwareUpdatePrompt = koinInject()
+        val forkFirmwareOffer by forkFirmwareUpdatePrompt.pendingOffer.collectAsState()
+        forkFirmwareOffer?.let { offer ->
+            AlertDialog(
+                onDismissRequest = forkFirmwareUpdatePrompt::dismiss,
+                title = { Text("Install ${ForkFirmwareSource.NAME} firmware?") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(
+                            "${ForkFirmwareSource.NAME} PebbleOS " +
+                                    "${offer.release.version.stringVersion} is available " +
+                                    "for ${offer.watchName}."
+                        )
+                        if (offer.release.notes.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(offer.release.notes)
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = forkFirmwareUpdatePrompt::accept) {
+                        Text("Install")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = forkFirmwareUpdatePrompt::decline) {
+                        Text("No thanks")
                     }
                 },
             )

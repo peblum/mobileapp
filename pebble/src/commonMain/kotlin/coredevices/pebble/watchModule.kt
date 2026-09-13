@@ -19,8 +19,12 @@ import coredevices.pebble.firmware.BatteryChargedNotifier
 import coredevices.pebble.firmware.Cohorts
 import coredevices.pebble.firmware.FirmwareUpdateCheck
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
+import coredevices.pebble.firmware.ForkFirmwareReleases
+import coredevices.pebble.firmware.ForkFirmwareUpdatePrompt
+import coredevices.pebble.firmware.GithubForkFirmwareReleases
 import coredevices.pebble.firmware.RealBatteryChargedNotifier
 import coredevices.pebble.firmware.RealFirmwareUpdateUiTracker
+import coredevices.pebble.firmware.RealForkFirmwareUpdatePrompt
 import coredevices.pebble.firmware.postWatchFullyChargedNotification
 import coredevices.pebble.services.AppstoreCache
 import coredevices.pebble.services.AppstoreService
@@ -73,6 +77,7 @@ import io.rebble.libpebblecommon.LibPebbleConfig
 import io.rebble.libpebblecommon.NotificationConfig
 import io.rebble.libpebblecommon.WatchConfig
 import io.rebble.libpebblecommon.connection.AppContext
+import io.rebble.libpebblecommon.connection.ConnectedPebble
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
 import io.rebble.libpebblecommon.connection.HealthDataApi
 import io.rebble.libpebblecommon.connection.LibPebble
@@ -196,6 +201,19 @@ val watchModule = module {
     singleOf(::ContactDeveloperApi)
     factoryOf(::Cohorts)
     singleOf(::FirmwareUpdateCheck)
+    singleOf(::GithubForkFirmwareReleases) bind ForkFirmwareReleases::class
+    single<ForkFirmwareUpdatePrompt> {
+        val libPebble: LibPebble = get()
+        RealForkFirmwareUpdatePrompt(get(), get()) { identifier, update ->
+            val watch = libPebble.watches.value
+                .firstOrNull { it.identifier == identifier } as? ConnectedPebble.Firmware
+            if (watch == null) {
+                Logger.w { "No connected watch found for fork firmware update" }
+            } else {
+                watch.updateFirmware(update)
+            }
+        }
+    }
     factoryOf(::PebbleFeatures)
     factoryOf(::WeatherFetcher)
     factoryOf(::LanguagePackRepository)

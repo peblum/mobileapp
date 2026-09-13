@@ -38,6 +38,8 @@ import coredevices.pebble.account.FirestoreLockerEntry
 import coredevices.pebble.account.PebbleAccount
 import coredevices.pebble.account.UsersMeResponse
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
+import coredevices.pebble.firmware.ForkFirmwareOffer
+import coredevices.pebble.firmware.ForkFirmwareUpdatePrompt
 import coredevices.pebble.services.AppStoreHome
 import coredevices.pebble.services.AppStoreHomeResult
 import coredevices.pebble.services.AppstoreCache
@@ -64,6 +66,7 @@ import io.rebble.libpebblecommon.connection.FirmwareUpdateCheckResult
 import io.rebble.libpebblecommon.connection.LibPebble
 import io.rebble.libpebblecommon.connection.NotificationApps
 import io.rebble.libpebblecommon.connection.PebbleIdentifier
+import io.rebble.libpebblecommon.services.WatchInfo
 import io.rebble.libpebblecommon.locker.AppType
 import io.rebble.libpebblecommon.metadata.WatchType
 import io.rebble.libpebblecommon.web.LockerAddResponse
@@ -350,6 +353,20 @@ private fun fakePebbleModule(appContext: AppContext) = module {
         override fun navigateToTab(route: NavBarRoute) {}
     }
     single { initialLockerSync } bind PebbleDeepLinkHandler::class
+    val forkFirmwareUpdatePrompt = object : ForkFirmwareUpdatePrompt {
+        override val pendingOffer: StateFlow<ForkFirmwareOffer?> = MutableStateFlow(null)
+        override suspend fun maybeOffer(
+            identifier: PebbleIdentifier,
+            watchName: String,
+            watchInfo: WatchInfo,
+            updateInProgress: Boolean,
+        ) {}
+
+        override fun accept() {}
+        override fun decline() {}
+        override fun dismiss() {}
+    }
+    single { forkFirmwareUpdatePrompt } bind ForkFirmwareUpdatePrompt::class
     single { object : PermissionRequester(requiredPermissions, get<AppResumed>()) {
         override suspend fun requestPlatformPermission(
             permission: Permission,
