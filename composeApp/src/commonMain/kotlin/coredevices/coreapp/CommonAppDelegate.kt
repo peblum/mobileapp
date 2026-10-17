@@ -33,6 +33,7 @@ import io.rebble.libpebblecommon.connection.LibPebble
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -68,6 +69,19 @@ class CommonAppDelegate(
     private val logger = Logger.withTag("CommonAppDelegate")
     private val syncInProgress = MutableStateFlow(false)
 
+    private fun unpackBundledSpeechModel(modelProvider: CactusModelPathProvider) {
+        val model = CommonBuildKonfig.CACTUS_STT_MODEL
+        if (!coreConfigHolder.config.value.sttConfig.mode.usesLocalCactus() || !modelProvider.isModelBundled(model)) return
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                modelProvider.getSTTModelPath()
+                logger.i { "Bundled speech model $model is ready" }
+            } catch (e: Exception) {
+                logger.w(e) { "Unpacking the bundled speech model $model failed" }
+            }
+        }
+    }
+
     private fun initCactus() {
         val modelProvider = try {
             org.koin.mp.KoinPlatform.getKoin().get<CactusModelPathProvider>()
@@ -80,6 +94,7 @@ class CommonAppDelegate(
         } catch (e: Exception) {
             logger.w(e) { "Cactus telemetry init skipped" }
         }
+        unpackBundledSpeechModel(modelProvider)
         try {
             val incompatible = modelProvider.getIncompatibleModels()
             if (incompatible.isNotEmpty()) {

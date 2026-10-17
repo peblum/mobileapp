@@ -65,7 +65,7 @@ actual class CactusModelProvider actual constructor() : coredevices.util.transcr
     actual override fun getIncompatibleModels(): List<String> {
         val compatible = setOf(CommonBuildKonfig.CACTUS_STT_MODEL, CommonBuildKonfig.CACTUS_STT_MODEL_ENG, CommonBuildKonfig.CACTUS_LM_MODEL_NAME)
         return getDownloadedModels().filter { name ->
-            modelNeedsReplacement(name, compatible, versionMatches(name), isBundled(name))
+            modelNeedsReplacement(name, compatible, versionMatches(name), isModelBundled(name))
         }
     }
 
@@ -75,7 +75,7 @@ actual class CactusModelProvider actual constructor() : coredevices.util.transcr
             versionFile.readText().trim() == weightsVersionFor(modelName)
     }
 
-    private fun isBundled(modelName: String): Boolean =
+    override fun isModelBundled(modelName: String): Boolean =
         context.assets.list("models")?.contains("${modelName.lowercase()}-$QUANTIZATION.zip") == true
 
     actual override fun deleteModel(modelName: String) {
@@ -108,17 +108,10 @@ actual class CactusModelProvider actual constructor() : coredevices.util.transcr
     private suspend fun downloadAndExtract(modelName: String, targetDir: File, version: String) = withContext(Dispatchers.IO) {
         val zipName = "${modelName.lowercase()}-$QUANTIZATION.zip"
 
-        val tempZip = if (context.assets.list("models")?.contains(zipName) == true) {
+        val bundled = context.assets.list("models")?.contains(zipName) == true
+        val tempZip = if (bundled) {
             logger.i { "Found included model zip in assets: $zipName, extracting..." }
-            val tempZip = File(context.cacheDir, "cactus_asset_$modelName.zip")
-            withContext(Dispatchers.IO) {
-                context.assets.open("models/$zipName").use { input ->
-                    FileOutputStream(tempZip).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
-            tempZip
+            null
         } else {
             val url = "$HF_BASE/$modelName/resolve/$version/$zipName"
             logger.i { "Downloading model: $url" }
@@ -192,7 +185,8 @@ actual class CactusModelProvider actual constructor() : coredevices.util.transcr
             targetDir.mkdirs()
 
             // Extract
-            ZipInputStream(tempZip.inputStream().buffered()).use { zis ->
+            val zipStream = tempZip?.inputStream() ?: context.assets.open("models/$zipName")
+            ZipInputStream(zipStream.buffered()).use { zis ->
                 var entry = zis.nextEntry
                 while (entry != null) {
                     currentCoroutineContext().ensureActive()
@@ -227,7 +221,7 @@ actual class CactusModelProvider actual constructor() : coredevices.util.transcr
             targetDir.deleteRecursively()
             throw e
         } finally {
-            tempZip.delete()
+            tempZip?.delete()
         }
     }
 

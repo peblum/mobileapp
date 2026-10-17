@@ -1,3 +1,7 @@
+import java.net.URI
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -60,6 +64,9 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    androidResources {
+        noCompress += "zip"
+    }
     buildTypes {
         getByName("release") {
             isMinifyEnabled = true
@@ -116,6 +123,72 @@ dependencies {
     androidTestImplementation(project(":mcp"))
 }
 
+abstract class BundleSpeechModels : DefaultTask() {
+    @get:Input
+    abstract val version: Property<String>
+
+    @get:Input
+    abstract val checksums: MapProperty<String, String>
+
+    @get:Internal
+    abstract val cacheDir: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val assetsDir: DirectoryProperty
+
+    @TaskAction
+    fun bundle() {
+        val models = assetsDir.get().asFile.resolve("models").apply { deleteRecursively(); mkdirs() }
+        val cache = cacheDir.get().asFile.resolve(version.get()).apply { mkdirs() }
+        checksums.get().forEach { (slug, checksum) ->
+            val zipName = "$slug-cq4.zip"
+            val cached = cache.resolve(zipName)
+            if (!cached.exists() || sha256(cached) != checksum) {
+                val partial = File.createTempFile(zipName, ".part", cache)
+                try {
+                    logger.lifecycle("Downloading $zipName")
+                    val connection = URI("https://huggingface.co/Cactus-Compute/$slug/resolve/${version.get()}/$zipName").toURL()
+                        .openConnection()
+                        .apply {
+                            connectTimeout = 30_000
+                            readTimeout = 60_000
+                        }
+                    connection.getInputStream().use { input -> partial.outputStream().use { input.copyTo(it) } }
+                    val downloaded = sha256(partial)
+                    if (downloaded != checksum) {
+                        throw GradleException("$zipName has SHA-256 $downloaded, expected $checksum")
+                    }
+                    Files.move(partial.toPath(), cached.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                } finally {
+                    partial.delete()
+                }
+            }
+            cached.copyTo(models.resolve(zipName))
+        }
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(1 shl 20)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+}
+
+val bundleSpeechModels = providers.gradleProperty("bundleSpeechModels").orNull?.toBooleanStrictOrNull() ?: true
+
+val bundledSpeechModels = tasks.register<BundleSpeechModels>("bundleSpeechModels") {
+    version.set(providers.gradleProperty("cactusWeightsVersion"))
+    checksums.put(providers.gradleProperty("cactusSttModel").get(), providers.gradleProperty("cactusSttModelSha256"))
+    cacheDir.set(gradle.gradleUserHomeDir.resolve("caches/bundled-speech-models"))
+}
+
 // Resolved at execution time — a configuration-time .get() makes every commit invalidate the
 // configuration cache.
 androidComponents {
@@ -123,6 +196,9 @@ androidComponents {
         variant.outputs.forEach {
             it.versionCode.set(gitVersionCode)
             it.versionName.set(gitVersionName)
+        }
+        if (bundleSpeechModels) {
+            variant.sources.assets?.addGeneratedSourceDirectory(bundledSpeechModels, BundleSpeechModels::assetsDir)
         }
     }
 }

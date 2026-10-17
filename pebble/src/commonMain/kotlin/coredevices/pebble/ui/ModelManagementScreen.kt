@@ -81,6 +81,7 @@ class ModelManagementScreenViewModel(
     private val coreConfigHolder: CoreConfigHolder,
     private val settings: Settings
 ) : ViewModel() {
+    val bundledModels = modelManager.getBundledModelSlugs()
     private val _downloadedModels = MutableStateFlow(modelManager.getDownloadedModelSlugs())
     val downloadedModels = _downloadedModels.asStateFlow()
     val modelDownloadState = modelManager.modelDownloadStatus
@@ -267,6 +268,7 @@ fun ModelManagementScreen(
     topBarParams: TopBarParams,
     downloadStatus: State<ModelDownloadStatus>,
     downloadedModels: State<List<String>>,
+    bundledModels: List<String>,
     availableSTTModels: State<ModelManagementScreenViewModel.AvailableModelsState>,
     currentSTTModel: State<String?>,
     recommendedSTTModelSlug: String,
@@ -350,7 +352,7 @@ fun ModelManagementScreen(
                                 onDownloadCancel = {
                                     onCancelDownload()
                                 },
-                                onDelete = { onDeleteModel(model.slug) },
+                                onDelete = if (model.slug in bundledModels) null else { { onDeleteModel(model.slug) } },
                                 onSelect = { onSetCurrentSTTModel(model.slug) }
                             )
                         }
@@ -376,7 +378,7 @@ private fun ModelListItem(
     isSelected: Boolean,
     onDownload: (() -> Unit)?,
     onDownloadCancel: () -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (() -> Unit)?,
     onSelect: () -> Unit,
 ) {
     ListItem(
@@ -436,14 +438,16 @@ private fun ModelListItem(
                         }
                     }
                     DownloadState.Downloaded -> {
-                        IconButton(
-                            onClick = onDelete
-                        ) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Delete",
-                                tint = MaterialTheme.colorScheme.error
-                            )
+                        if (onDelete != null) {
+                            IconButton(
+                                onClick = onDelete
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     }
                 }
@@ -474,6 +478,7 @@ fun ModelManagementScreen(
         topBarParams = topBarParams,
         downloadStatus = downloadStatus,
         downloadedModels = downloadedModels,
+        bundledModels = viewModel.bundledModels,
         availableSTTModels = availableSTTModels,
         currentSTTModel = currentSTTModel,
         recommendedSTTModelSlug = recommendedSTTModel.modelSlug,
@@ -493,6 +498,7 @@ fun ModelManagementScreenPreview() {
             topBarParams = WrapperTopBarParams,
             downloadStatus = mutableStateOf(ModelDownloadStatus.Downloading(modelSlug = "whisper-base")),
             downloadedModels = mutableStateOf(listOf("whisper-small")),
+            bundledModels = emptyList(),
             availableSTTModels = mutableStateOf(
                 ModelManagementScreenViewModel.AvailableModelsState.Success(
                     listOf(
