@@ -27,7 +27,7 @@ jobs:
       - name: Use dummy google-services json
         run: mv androidApp/src/google-services-dummy.json androidApp/src/google-services.json
       - name: Build and Test
-        run: ./gradlew :androidApp:assembleDebug testDebugUnitTest testAndroidHostTest jvmTest lintDebug
+        run: ./gradlew -PbundleSpeechModels=false :androidApp:assembleDebug testDebugUnitTest testAndroidHostTest jvmTest lintDebug
         env:
           GITHUB_ACTOR: ${{ secrets.READ_PACKAGES_ACTOR }}
           GITHUB_TOKEN: ${{ secrets.READ_PACKAGES_TOKEN }}

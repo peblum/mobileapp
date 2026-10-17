@@ -7,6 +7,8 @@ import coredevices.util.models.CactusSTTMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -102,10 +104,21 @@ data class CoreConfig(
     val resolvedWeatherUnits: WeatherUnit get() = weatherUnits ?: deviceDefaultWeatherUnit()
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class STTConfig(
-    val mode: CactusSTTMode = CactusSTTMode.RemoteOnly,
+    @EncodeDefault val mode: CactusSTTMode = defaultSttMode(),
     val modelName: String? = null,
     /** ISO 639-1 language code. Null means auto-detect. */
     val spokenLanguage: String? = null,
 )
+
+fun defaultSttMode(
+    wisprAuthUrl: String? = CommonBuildKonfig.WISPR_AUTH_URL,
+    kirinkiUrl: String? = CommonBuildKonfig.KIRINKI_URL,
+): CactusSTTMode =
+    if (wisprAuthUrl == null && kirinkiUrl == null) {
+        CactusSTTMode.LocalOnly
+    } else {
+        CactusSTTMode.RemoteOnly
+    }

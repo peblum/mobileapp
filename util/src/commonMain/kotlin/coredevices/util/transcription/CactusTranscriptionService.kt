@@ -212,9 +212,8 @@ class CactusTranscriptionService(
         if (config.mode == CactusSTTMode.RemoteOnly) return
         if (!isCactusSupported()) return
         val sttModelName = CommonBuildKonfig.CACTUS_STT_MODEL
-        if (!modelProvider.isModelDownloaded(sttModelName) ||
-            sttModelName in modelProvider.getIncompatibleModels()
-        ) {
+        val usable = modelProvider.isModelDownloaded(sttModelName) && sttModelName !in modelProvider.getIncompatibleModels()
+        if (!usable && !modelProvider.isModelBundled(sttModelName)) {
             logger.w { "STT model '$sttModelName' unavailable or needs update, skipping init" }
             return
         }
@@ -235,7 +234,7 @@ class CactusTranscriptionService(
         }
     }
 
-    private fun modelExists(): Boolean = modelProvider.isModelDownloaded(CommonBuildKonfig.CACTUS_STT_MODEL)
+    private fun modelExists(): Boolean = CommonBuildKonfig.CACTUS_STT_MODEL.let { modelProvider.isModelDownloaded(it) || modelProvider.isModelBundled(it) }
 
     private fun performInit(): Job {
         return scope.launch(Dispatchers.IO) {

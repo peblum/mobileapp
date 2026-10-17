@@ -23,9 +23,14 @@ class ModelManager(
         modelDownloadManager.cancelDownload()
     }
 
+    fun getBundledModelSlugs(): List<String> {
+        val provider = modelPathProvider ?: return emptyList()
+        return listOf(CommonBuildKonfig.CACTUS_STT_MODEL).filter { provider.isModelBundled(it) }
+    }
+
     fun getDownloadedModelSlugs(): List<String> {
-        return modelPathProvider?.getDownloadedModels()
-            ?: listOf(CommonBuildKonfig.CACTUS_STT_MODEL, CommonBuildKonfig.CACTUS_LM_MODEL_NAME)
+        val provider = modelPathProvider ?: return listOf(CommonBuildKonfig.CACTUS_STT_MODEL, CommonBuildKonfig.CACTUS_LM_MODEL_NAME)
+        return (provider.getDownloadedModels() + getBundledModelSlugs()).distinct()
     }
 
     // Downloaded STT models, i.e. everything except the language model (matches getAvailableSTTModels).
