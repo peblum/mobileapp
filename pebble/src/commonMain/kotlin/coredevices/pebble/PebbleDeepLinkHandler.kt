@@ -10,6 +10,7 @@ import coredevices.pebble.account.PebbleAccount
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
 import coredevices.pebble.ui.NavBarRoute
 import coredevices.pebble.ui.PebbleNavBarRoutes
+import coredevices.util.CommonBuildKonfig
 import io.rebble.libpebblecommon.connection.AppContext
 import io.rebble.libpebblecommon.connection.ConnectedPebble
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
@@ -160,6 +161,9 @@ class RealPebbleDeepLinkHandler(
 
     private fun handleLanguagePack(uri: Uri, name: String): Boolean {
         logger.v { "handleLanguagePack() $uri" }
+        if (CommonBuildKonfig.FDROID_BUILD) {
+            return rejectExternalPayload(name)
+        }
         val file = writeFile(context, uri)
         if (file == null) {
             logger.w { "handleLanguagePack: couldn't write file" }
@@ -180,6 +184,9 @@ class RealPebbleDeepLinkHandler(
 
     private fun handleFirmware(uri: Uri, fileName: String): Boolean {
         logger.v { "handleFirmware() $uri" }
+        if (CommonBuildKonfig.FDROID_BUILD) {
+            return rejectExternalPayload(uri.lastPathSegment ?: "firmware")
+        }
         val file = writeFile(context, uri)
         if (file == null) {
             logger.w { "handleFirmware: couldn't write file" }
@@ -256,6 +263,9 @@ class RealPebbleDeepLinkHandler(
 
     private fun handleApp(uri: Uri): Boolean {
         logger.v { "handleApp() $uri" }
+        if (CommonBuildKonfig.FDROID_BUILD) {
+            return rejectExternalPayload(uri.lastPathSegment ?: "watch app")
+        }
         val file = writeFile(context, uri)
         if (file == null) {
             logger.w { "handleApp: couldn't write file" }
@@ -264,6 +274,15 @@ class RealPebbleDeepLinkHandler(
         GlobalScope.launch {
             libPebble.sideloadApp(file)
         }
+        return true
+    }
+
+    private fun rejectExternalPayload(name: String): Boolean {
+        logger.w { "Rejected external payload in F-Droid build: $name" }
+        _snackBarMessages.tryEmit(
+            "External app, firmware, and language-pack files are disabled in this build. " +
+                "Use an in-app sideload action instead."
+        )
         return true
     }
 
@@ -310,7 +329,7 @@ class RealPebbleDeepLinkHandler(
     }
 
     private fun handleShowWatches(path: String?): Boolean {
-        if (path != null) {
+        if (path != null && !CommonBuildKonfig.FDROID_BUILD) {
             firmwareUpdateUiTracker.updateWatchNow(libPebble, path.removePrefix("/").removeSuffix("/"))
         }
         val route = PebbleNavBarRoutes.WatchesRoute
@@ -320,6 +339,9 @@ class RealPebbleDeepLinkHandler(
 
     // Show the Watches tab and ask it to (re-)register the paired ring as a companion device.
     private fun handleRegisterIndexCompanion(): Boolean {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+            return false
+        }
         _navigateToPebbleDeepLink.value = PebbleDeepLink(PebbleNavBarRoutes.WatchesRoute)
         _requestIndexCompanion.value = true
         return true
@@ -330,14 +352,9 @@ class RealPebbleDeepLinkHandler(
             return false
         }
         logger.v { "handleNavbar: $path" }
-        return when (path.removePrefix("/").removeSuffix("/")) {
-            "index" -> {
-                _navigateToPebbleDeepLink.value = PebbleDeepLink(PebbleNavBarRoutes.IndexRoute)
-                true
-            }
-
-            else -> false
-        }
+        val route = navbarRoute(path) ?: return false
+        _navigateToPebbleDeepLink.value = PebbleDeepLink(route)
+        return true
     }
 
     private fun handleGithubAuth(uri: Uri): Boolean {
@@ -381,3 +398,12 @@ class RealPebbleDeepLinkHandler(
         }
     }
 }
+
+internal fun navbarRoute(
+    path: String?,
+    indexHardwareEnabled: Boolean = CommonBuildKonfig.INDEX_HARDWARE_ENABLED,
+): NavBarRoute? =
+    when (path?.removePrefix("/")?.removeSuffix("/")) {
+        "index" -> PebbleNavBarRoutes.IndexRoute.takeIf { indexHardwareEnabled }
+        else -> null
+    }

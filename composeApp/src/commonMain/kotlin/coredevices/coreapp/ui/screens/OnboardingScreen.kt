@@ -55,9 +55,11 @@ import coredevices.ui.PebbleElevatedButton
 import coredevices.ui.SignInButtons
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.DoneInitialOnboarding
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.name
 import coredevices.util.rememberUiContext
 import coredevices.util.requestIsFullScreen
@@ -185,26 +187,30 @@ fun OnboardingScreen(
                                     viewModel.stage.value = OnboardingStage.Permissions
                                 },
                             )
+                            if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+                                DeviceChoiceCard(
+                                    label = "Index 01",
+                                    icon = Icons.Default.RadioButtonUnchecked,
+                                    onClick = {
+                                        viewModel.setIndexEnabled(true)
+                                        viewModel.deviceChoice.value = DeviceChoice.Index01
+                                        viewModel.stage.value = OnboardingStage.Permissions
+                                    },
+                                )
+                            }
+                        }
+                        if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+                            Spacer(modifier = Modifier.height(20.dp))
                             DeviceChoiceCard(
-                                label = "Index 01",
-                                icon = Icons.Default.RadioButtonUnchecked,
+                                label = "Both",
+                                icon = Icons.Default.Devices,
                                 onClick = {
                                     viewModel.setIndexEnabled(true)
-                                    viewModel.deviceChoice.value = DeviceChoice.Index01
+                                    viewModel.deviceChoice.value = DeviceChoice.Both
                                     viewModel.stage.value = OnboardingStage.Permissions
                                 },
                             )
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
-                        DeviceChoiceCard(
-                            label = "Both",
-                            icon = Icons.Default.Devices,
-                            onClick = {
-                                viewModel.setIndexEnabled(true)
-                                viewModel.deviceChoice.value = DeviceChoice.Both
-                                viewModel.stage.value = OnboardingStage.Permissions
-                            },
-                        )
                     }
                 }
 
@@ -217,7 +223,11 @@ fun OnboardingScreen(
                         }
                         logger.v { "permissionToRequest = $permissionToRequest  /  missingPermissions = $missingPermissions " }
                         if (permissionToRequest == null) {
-                            viewModel.stage.value = OnboardingStage.SignIn
+                            viewModel.stage.value = if (cloudAccountAuthEnabled()) {
+                                OnboardingStage.SignIn
+                            } else {
+                                OnboardingStage.Done
+                            }
                         } else {
                             val warnBeforeFullScreenRequest = permissionToRequest.requestIsFullScreen()
                             LaunchedEffect(permissionToRequest) {
@@ -266,6 +276,12 @@ fun OnboardingScreen(
                 }
 
                 OnboardingStage.SignIn -> {
+                    if (!cloudAccountAuthEnabled()) {
+                        LaunchedEffect(Unit) {
+                            viewModel.stage.value = OnboardingStage.Done
+                        }
+                        return@Scaffold
+                    }
                     val coreConfig by viewModel.coreConfig.collectAsState()
                     Column(
                         modifier = Modifier.fillMaxSize().padding(20.dp),

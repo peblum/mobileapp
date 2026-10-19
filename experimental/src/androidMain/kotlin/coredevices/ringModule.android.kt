@@ -45,7 +45,7 @@ actual val platformRingModule = module {
             debugDelegate = get(),
             hacksDelegate = get(),
             collectionIndexStorage = get(),
-            context = get(),
+            context = get<Context>(),
             hwVersion = RingSync.SATELLITE_HW_VER,
             CoroutineScope(Dispatchers.Default)
         )

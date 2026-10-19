@@ -1,5 +1,6 @@
 package coredevices.coreapp
 
+import android.annotation.TargetApi
 import android.app.ActivityManager
 import android.app.Application
 import android.app.ApplicationExitInfo
@@ -10,7 +11,6 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.PowerManager
 import android.os.StrictMode
-import androidx.annotation.RequiresApi
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -25,8 +25,6 @@ import coil3.gif.GifDecoder
 import coil3.memory.MemoryCache
 import coil3.request.crossfade
 import coil3.svg.SvgDecoder
-import com.google.firebase.Firebase
-import com.google.firebase.crashlytics.crashlytics
 import com.mmk.kmpnotifier.notification.NotifierManager
 import com.mmk.kmpnotifier.notification.configuration.NotificationPlatformConfiguration
 import coredevices.ExperimentalDevices
@@ -39,9 +37,12 @@ import coredevices.coreapp.util.registerBluetoothPairingDebugLogger
 import coredevices.experimentalModule
 import coredevices.pebble.PebbleAppDelegate
 import coredevices.pebble.watchModule
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
 import coredevices.util.R
+import dev.gitlive.firebase.Firebase
+import dev.gitlive.firebase.crashlytics.crashlytics
 import io.rebble.libpebblecommon.connection.AppContext
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
@@ -88,7 +89,9 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
         }, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
         registerBluetoothPairingDebugLogger(this)
         setupExceptionHandler()
-        experimentalDevices.appInit()
+        if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+            experimentalDevices.appInit()
+        }
         // Cactus telemetry is initialized via CommonAppDelegate.initCactus()
         pebbleAppDelegate.init()
         configureStrictMode()
@@ -105,22 +108,25 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
 
     private fun dumpPreviousExitInfo() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val am =
-                getSystemService(ActivityManager::class.java)
-            val reasons =
-                am.getHistoricalProcessExitReasons(packageName, 0, 5)
-            reasons.firstOrNull()?.let { info ->
-                val time = Instant.fromEpochMilliseconds(info.timestamp)
-                logger.i {
-                    "Previous exit @ $time reason=${reasonName(info.reason)} " +
-                            "description=${info.description} importance=${info.importance} " +
-                            "pss=${info.pss} rss=${info.rss} status=${info.status}"
-                }
+            dumpPreviousExitInfoR()
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.R)
+    private fun dumpPreviousExitInfoR() {
+        val am = getSystemService(ActivityManager::class.java)
+        val reasons = am.getHistoricalProcessExitReasons(packageName, 0, 5)
+        reasons.firstOrNull()?.let { info ->
+            val time = Instant.fromEpochMilliseconds(info.timestamp)
+            logger.i {
+                "Previous exit @ $time reason=${reasonName(info.reason)} " +
+                        "description=${info.description} importance=${info.importance} " +
+                        "pss=${info.pss} rss=${info.rss} status=${info.status}"
             }
         }
     }
 
-    @RequiresApi(30)
+    @TargetApi(Build.VERSION_CODES.R)
     private fun reasonName(reason: Int) = when (reason) {
         ApplicationExitInfo.REASON_ANR -> "ANR"
         ApplicationExitInfo.REASON_CRASH -> "CRASH_JAVA"

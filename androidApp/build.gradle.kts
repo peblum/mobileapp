@@ -6,8 +6,12 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.googleServices)
-    alias(libs.plugins.firebaseCrashlytics)
+}
+
+val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+if (!fdroidBuild) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
 }
 
 val properties = Properties().apply {
@@ -41,11 +45,20 @@ val gitVersionName = providers.exec {
     }.standardOutput.asText
 }.map { it.trim().ifEmpty { "unknown" } }
 
+val gitShortRevision = providers.exec {
+    isIgnoreExitValue = true
+    commandLine("git", "rev-parse", "--short=12", "HEAD")
+}.standardOutput.asText.map { it.trim() }
+
 android {
     namespace = "coredevices.coreapp"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
-    if (!localReleaseBuild) {
+    buildFeatures {
+        resValues = fdroidBuild
+    }
+
+    if (!fdroidBuild && !localReleaseBuild) {
         signingConfigs {
             create("release") {
                 storeFile = file("../keystore.jks")
@@ -61,9 +74,16 @@ android {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["pebbleKitClassicProviderAuthority"] =
+            "com.getpebble.android.provider.basalt"
+        manifestPlaceholders["pebbleKitClassicProviderEnabled"] = true
         ndk {
             //noinspection ChromeOsAbiSupport
-            abiFilters += setOf("armeabi-v7a", "arm64-v8a")
+            abiFilters += if (fdroidBuild) {
+                setOf("armeabi-v7a", "arm64-v8a", "x86_64")
+            } else {
+                setOf("armeabi-v7a", "arm64-v8a")
+            }
         }
     }
     packaging {
@@ -74,20 +94,27 @@ android {
     androidResources {
         noCompress += "zip"
     }
+    if (fdroidBuild) {
+        androidResources.ignoreAssetsPatterns.add("needle-pebble-ft-cq4.zip")
+    }
     buildTypes {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
-            if (localReleaseBuild) {
-                signingConfig = signingConfigs.getByName("debug")
-                // Crashlytics regenerates a mapping-id resource every build
-                // (upToDateWhen=false), forcing aapt + a full R8 rerun even on
-                // null builds. Skip it for local release builds.
-                configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
-                    mappingFileUploadEnabled = false
+            if (!fdroidBuild) {
+                if (localReleaseBuild) {
+                    signingConfig = signingConfigs.getByName("debug")
+                    // Crashlytics regenerates a mapping-id resource every build
+                    // (upToDateWhen=false), forcing aapt + a full R8 rerun even on
+                    // null builds. Skip it for local release builds. Configured by
+                    // name because the Crashlytics plugin classes are not on the
+                    // F-Droid build's script classpath.
+                    extensions.getByName("firebaseCrashlytics").withGroovyBuilder {
+                        "setMappingFileUploadEnabled"(false)
+                    }
+                } else {
+                    signingConfig = signingConfigs.getByName("release")
                 }
-            } else {
-                signingConfig = signingConfigs.getByName("release")
             }
             isDebuggable = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -95,9 +122,39 @@ android {
         getByName("debug") {
             isMinifyEnabled = false
             isDebuggable = true
-            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
-                mappingFileUploadEnabled = false
+            if (!fdroidBuild) {
+                extensions.getByName("firebaseCrashlytics").withGroovyBuilder {
+                    "setMappingFileUploadEnabled"(false)
+                }
             }
+        }
+        if (fdroidBuild) {
+            create("ci") {
+                initWith(getByName("debug"))
+                applicationIdSuffix = ".ci"
+                manifestPlaceholders["pebbleKitClassicProviderAuthority"] =
+                    "coredevices.coreapp.ci.provider.basalt"
+                manifestPlaceholders["pebbleKitClassicProviderEnabled"] = false
+                resValue("string", "app_name", "Pebble CI")
+                matchingFallbacks += listOf("debug")
+            }
+            create("nightly") {
+                initWith(getByName("release"))
+                applicationIdSuffix = ".nightly"
+                manifestPlaceholders["pebbleKitClassicProviderAuthority"] =
+                    "coredevices.coreapp.nightly.provider.basalt"
+                manifestPlaceholders["pebbleKitClassicProviderEnabled"] = false
+                resValue("string", "app_name", "Pebble Nightly")
+                matchingFallbacks += listOf("release")
+            }
+        }
+    }
+    sourceSets {
+        if (fdroidBuild) {
+            getByName("debug").manifest.srcFile("src/androidFdroid/AndroidManifest.xml")
+            getByName("release").manifest.srcFile("src/androidFdroid/AndroidManifest.xml")
+            getByName("ci").manifest.srcFile("src/androidFdroid/AndroidManifest.xml")
+            getByName("nightly").manifest.srcFile("src/androidFdroid/AndroidManifest.xml")
         }
     }
     compileOptions {
@@ -110,10 +167,14 @@ dependencies {
     implementation(project(":composeApp"))
     // Components this module's manifest declares, so lint can resolve them.
     implementation(project(":util"))
+    implementation(project(":experimental"))
     implementation(libs.androidx.core.ktx)
-    implementation(libs.health.kmp)
+    if (fdroidBuild) {
+        implementation(project(":health-stubs"))
+    } else {
+        implementation(libs.health.kmp)
+    }
 
-    androidTestImplementation(platform(libs.firebase.bom))
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.ktor.client.okhttp)
@@ -121,9 +182,17 @@ dependencies {
     androidTestImplementation(libs.koin.android)
     androidTestImplementation(libs.coroutines)
     androidTestImplementation(libs.kotlin.test)
-    androidTestImplementation(libs.firebase.auth)
-    androidTestImplementation(project(":cactus"))
+    androidTestImplementation(libs.kotlinx.datetime)
+    if (fdroidBuild) {
+        androidTestImplementation(project(":firebase-stubs"))
+        androidTestImplementation(project(":cactus-stubs"))
+    } else {
+        androidTestImplementation(platform(libs.firebase.bom))
+        androidTestImplementation(libs.firebase.auth)
+        androidTestImplementation(project(":cactus"))
+    }
     androidTestImplementation(project(":experimental"))
+    androidTestImplementation(project(":pebble"))
     androidTestImplementation(project(":libindex"))
     androidTestImplementation(project(":index-ai"))
     androidTestImplementation(project(":mcp"))
@@ -199,11 +268,25 @@ val bundledSpeechModels = tasks.register<BundleSpeechModels>("bundleSpeechModels
 // configuration cache.
 androidComponents {
     onVariants { variant ->
-        variant.outputs.forEach {
-            it.versionCode.set(gitVersionCode)
-            it.versionName.set(gitVersionName)
+        val testChannel = fdroidBuild && variant.buildType in setOf("ci", "nightly")
+        if (testChannel) {
+            variant.sources.manifests.addStaticManifestFile(
+                "src/androidForgejo/AndroidManifest.xml",
+            )
         }
-        if (bundleSpeechModels) {
+        variant.outputs.forEach { output ->
+            output.versionCode.set(gitVersionCode)
+            if (testChannel) {
+                output.versionName.set(
+                    gitVersionCode.zip(gitShortRevision) { code, revision ->
+                        "0.0.0-${variant.buildType}.$code+$revision"
+                    }
+                )
+            } else {
+                output.versionName.set(gitVersionName)
+            }
+        }
+        if (bundleSpeechModels && !fdroidBuild) {
             variant.sources.assets?.addGeneratedSourceDirectory(bundledSpeechModels, BundleSpeechModels::assetsDir)
         }
     }

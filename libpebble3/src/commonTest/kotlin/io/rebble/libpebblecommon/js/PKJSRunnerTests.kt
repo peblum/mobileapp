@@ -10,15 +10,15 @@ import io.rebble.libpebblecommon.metadata.pbw.appinfo.PbwAppInfo
 import io.rebble.libpebblecommon.metadata.pbw.appinfo.Resources
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -28,13 +28,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonPrimitive
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.fail
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
-abstract class PKJSRunnerTests(
-    private val createJsRunner: (
+abstract class PKJSRunnerTests {
+    protected abstract fun createJsRunner(
         libPebble: LibPebble,
         scope: CoroutineScope,
         appInfo: PbwAppInfo,
@@ -42,10 +42,12 @@ abstract class PKJSRunnerTests(
         jsPath: Path,
         device: CompanionAppDevice,
         urlOpenRequests: Channel<String>,
-        logMessages: MutableSharedFlow<String>
-    ) -> JsRunner
-) {
+        logMessages: Channel<String>,
+    ): JsRunner
+
     companion object {
+        private val RUNNER_TIMEOUT = 5.seconds
+
         private val APPINFO = PbwAppInfo(
             uuid = Uuid.NIL.toString(),
             shortName = "Test App",
@@ -75,18 +77,10 @@ abstract class PKJSRunnerTests(
         return jsPath
     }
 
-    private val logMessageFlow = MutableSharedFlow<String>().also {
-        GlobalScope.launch {
-            it.collect { msg ->
-                println("JSLOG: $msg")
-            }
-        }
-    }
-
     private fun makeRunner(
         js: String,
         uuid: Uuid,
-        scope: CoroutineScope = CoroutineScope(Dispatchers.Default),
+        scope: CoroutineScope,
         appMessages: FakeAppMessages = FakeAppMessages()
     ): JsRunner {
         val libPebble = FakeLibPebble()
@@ -103,57 +97,100 @@ abstract class PKJSRunnerTests(
                 appMessages
             ),
             Channel(Channel.UNLIMITED),
-            logMessageFlow,
+            Channel(
+                capacity = 2,
+                onBufferOverflow = BufferOverflow.DROP_OLDEST,
+            ),
         )
     }
 
-    open fun testJSExecution() {
-        val scope = CoroutineScope(Dispatchers.Default)
-        val runner = makeRunner("", Uuid.random(), scope = scope)
-        runBlocking {
+    private suspend fun <T> withRunner(
+        js: String,
+        uuid: Uuid,
+        block: suspend (JsRunner) -> T,
+    ): T {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val runner = makeRunner(js, uuid, scope)
+        return try {
             runner.start()
-            runner.eval("window.test = true;")
-            val result = runner.evalWithResult("window.test;")
-            when (result) {
-                is Boolean -> {
-                    assertTrue(result)
-                }
-                is String -> {
-                    assertEquals("true", result)
-                }
-                else -> {
-                    error("Unexpected result type: ${result?.let { it::class }}")
+            withTimeout(RUNNER_TIMEOUT) {
+                runner.readyState.first { it }
+            }
+            block(runner)
+        } finally {
+            try {
+                runner.stop()
+            } finally {
+                scope.cancel()
+                runCatching {
+                    SystemFileSystem.delete(runner.jsPath, mustExist = false)
                 }
             }
         }
-        assertTrue(scope.isActive)
+    }
+
+    private fun jsPrimitiveContent(value: Any?): String? = when (value) {
+        null -> null
+        is Boolean -> value.toString()
+        is String -> runCatching {
+            Json.decodeFromString<JsonElement>(value)
+        }.getOrNull()?.let {
+            if (it is JsonNull) null else it.jsonPrimitive.content
+        } ?: value
+        else -> error("Unexpected result type: ${value::class}")
+    }
+
+    private suspend fun JsRunner.assertJsValue(
+        expression: String,
+        expected: String?,
+        message: String? = null,
+    ) {
+        var actual: String? = null
+        var evaluated = false
+        val matched = withTimeoutOrNull(RUNNER_TIMEOUT) {
+            while (true) {
+                actual = jsPrimitiveContent(evalWithResult(expression))
+                evaluated = true
+                if (actual == expected) return@withTimeoutOrNull true
+                delay(10.milliseconds)
+            }
+            @Suppress("UNREACHABLE_CODE")
+            false
+        } ?: false
+        if (!matched) {
+            val detail = if (evaluated) {
+                "last value was <$actual>"
+            } else {
+                "the expression did not complete"
+            }
+            fail("${message ?: "Unexpected result for: $expression"}; expected <$expected>, $detail")
+        }
+    }
+
+    open fun testJSExecution() {
+        runBlocking {
+            withRunner("", Uuid.random()) { runner ->
+                runner.eval("window.test = true;")
+                runner.assertJsValue("window.test;", "true")
+            }
+        }
     }
 
     open fun testJSReady() {
-        val runner = makeRunner("""
-            Pebble.addEventListener('ready', function() {
-              window.readyConfirmed = true;
-            });
-        """.trimIndent(), Uuid.random())
-
         runBlocking {
-            runner.start()
-            // Wait a bit for the event to be processed
-            withTimeout(1.seconds) {
-                runner.readyState.first { it }
-            }
-            delay(5)
-            val result = runner.evalWithResult("window.readyConfirmed;")
-            when (result) {
-                is Boolean -> {
-                    assertTrue(result, "ready event handler should set window.readyConfirmed to true")
-                }
-                is String -> {
-                    assertEquals("true", result, "ready event handler should set window.readyConfirmed to true")
-                }
-                else -> {
-                    error("Unexpected result type: ${result?.let { it::class }}")
-                }
+            withRunner(
+                """
+                Pebble.addEventListener('ready', function() {
+                  window.readyConfirmed = true;
+                });
+                """.trimIndent(),
+                Uuid.random(),
+            ) { runner ->
+                runner.assertJsValue(
+                    "window.readyConfirmed;",
+                    "true",
+                    "ready event handler should set window.readyConfirmed to true",
+                )
             }
         }
     }
@@ -166,41 +203,16 @@ abstract class PKJSRunnerTests(
             });
         """.trimIndent()
         val uuid = Uuid.random()
-        var runner = makeRunner(js, uuid)
 
         runBlocking {
-            runner.start()
-            withTimeout(1.seconds) {
-                runner.readyState.first { it }
-            }
-            delay(5)
-            runner.stop()
-
-            runner = makeRunner("", uuid)
-            runner.start()
-            withTimeout(1.seconds) {
-                runner.readyState.first { it }
-            }
-            delay(5)
-
-            when (val result = runner.evalWithResult("localStorage.getItem('testKey');")) {
-                is String -> {
-                    val result = Json.decodeFromString<JsonElement>(result)
-                    assertEquals("testValue", result.jsonPrimitive.content)
-                }
-                else -> {
-                    error("Unexpected result type: ${result?.let { it::class }}")
-                }
+            withRunner(js, uuid) { runner ->
+                runner.assertJsValue("localStorage.getItem('testKey');", "testValue")
+                runner.assertJsValue("localStorage.testPropKey;", "testPropValue")
             }
 
-            when (val result = runner.evalWithResult("localStorage.testPropKey;")) {
-                is String -> {
-                    val result = Json.decodeFromString<JsonElement>(result)
-                    assertEquals("testPropValue", result.jsonPrimitive.content)
-                }
-                else -> {
-                    error("Unexpected result type: ${result?.let { it::class }}")
-                }
+            withRunner("", uuid) { runner ->
+                runner.assertJsValue("localStorage.getItem('testKey');", "testValue")
+                runner.assertJsValue("localStorage.testPropKey;", "testPropValue")
             }
         }
     }
@@ -213,40 +225,18 @@ abstract class PKJSRunnerTests(
             });
         """.trimIndent()
 
-        var runner = makeRunner(js, Uuid.random())
-
         runBlocking {
-            runner.start()
-            withTimeout(1.seconds) {
-                runner.readyState.first { it }
+            withRunner(js, Uuid.random()) { runner ->
+                runner.assertJsValue("localStorage.getItem('testKey');", "testValue")
+                runner.assertJsValue("localStorage.testPropKey;", "testPropValue")
             }
-            delay(5)
-            runner.stop()
 
-            runner = makeRunner("", Uuid.random())
-            runner.start()
-            withTimeout(1.seconds) {
-                runner.readyState.first { it }
-            }
-            delay(5)
-
-            when (val result = runner.evalWithResult("localStorage.getItem('testKey');")) {
-                is String -> {
-                    val result = Json.decodeFromString<JsonElement>(result)
-                    assertEquals(JsonNull, result.jsonPrimitive)
-                }
-                else -> {
-                    error("Unexpected result type: ${result?.let { it::class }}")
-                }
-            }
-            when (val result = runner.evalWithResult("window.localStorage.testPropKey;")) {
-                is String -> {
-                    val result = Json.decodeFromString<JsonElement>(result)
-                    assertEquals(JsonNull, result.jsonPrimitive)
-                }
-                else -> {
-                    error("Unexpected result type: ${result?.let { it::class }}")
-                }
+            withRunner("", Uuid.random()) { runner ->
+                runner.assertJsValue("localStorage.getItem('testKey') === null;", "true")
+                runner.assertJsValue(
+                    "typeof window.localStorage.testPropKey === 'undefined';",
+                    "true",
+                )
             }
         }
     }
@@ -258,71 +248,35 @@ abstract class PKJSRunnerTests(
      */
     open fun testLocalStorageEarlyExecution() {
         val uuid = Uuid.random()
-        var runner = makeRunner("""
-            console.log(window.__localStorageShimmed);
-            window.overrideAtScriptTime = window.__localStorageShimmed;
-            localStorage.setItem('testKey', 'testValue');
-        """.trimIndent(), uuid)
 
         runBlocking {
-            runner.start()
-            withTimeout(1.seconds) {
-                runner.readyState.first { it }
-            }
-            delay(5)
-            val resultEarlySet = runner.evalWithResult("localStorage.getItem('testKey');")
-            when (resultEarlySet) {
-                is String -> {
-                    val result = Json.decodeFromString<JsonElement>(resultEarlySet)
-                    assertEquals(
-                        "testValue",
-                        result.jsonPrimitive.content,
-                        "Early localStorage.setItem should save data to shimmed persistent storage"
-                    )
-                }
-                else -> {
-                    error("Unexpected result type: ${resultEarlySet?.let { it::class }}")
-                }
-            }
-            val overrideAtScriptTime = runner.evalWithResult("window.overrideAtScriptTime;")
-            when (overrideAtScriptTime) {
-                is Boolean -> {
-                    assertTrue(overrideAtScriptTime, "window.__localStorageShimmed should be true at script execution time, indicating shim is in place")
-                }
-                is String -> {
-                    assertEquals("true", overrideAtScriptTime, "window.__localStorageShimmed should be true at script execution time, indicating shim is in place")
-                }
-                else -> {
-                    error("Unexpected result type: ${overrideAtScriptTime?.let { it::class }}")
-                }
+            withRunner(
+                """
+                console.log(window.__localStorageShimmed);
+                window.overrideAtScriptTime = window.__localStorageShimmed;
+                localStorage.setItem('testKey', 'testValue');
+                """.trimIndent(),
+                uuid,
+            ) { runner ->
+                runner.assertJsValue(
+                    "localStorage.getItem('testKey');",
+                    "testValue",
+                    "Early localStorage.setItem should save data to shimmed persistent storage",
+                )
+                runner.assertJsValue(
+                    "window.overrideAtScriptTime;",
+                    "true",
+                    "window.__localStorageShimmed should be true at script execution time",
+                )
             }
 
-            runner.stop()
-
-            runner = makeRunner("window.result = localStorage.getItem('testKey');", uuid)
-            runner.start()
-            withTimeout(1.seconds) {
-                runner.readyState.first { it }
-            }
-            delay(5)
-            val resultEarlyGet = runner.evalWithResult("window.result;")
-            when (resultEarlyGet) {
-                is String -> {
-                    val result = Json.decodeFromString<JsonElement>(resultEarlyGet)
-                    assertEquals(
-                        "testValue",
-                        result.jsonPrimitive.content,
-                        "Early localStorage.getItem should return persisted data from shimmed persistent storage"
-                    )
-                }
-                else -> {
-                    error("Unexpected result type: ${resultEarlyGet?.let { it::class }}")
-                }
+            withRunner("window.result = localStorage.getItem('testKey');", uuid) { runner ->
+                runner.assertJsValue(
+                    "window.result;",
+                    "testValue",
+                    "Early localStorage.getItem should return persisted data from shimmed storage",
+                )
             }
         }
-    }
-
-    fun testConsoleLogFromCallbacks() {
-
     }
 }

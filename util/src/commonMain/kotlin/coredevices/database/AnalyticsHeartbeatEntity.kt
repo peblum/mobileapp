@@ -27,6 +27,9 @@ interface AnalyticsHeartbeatDao {
     @Query("DELETE FROM analytics_heartbeats WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
+    @Query("DELETE FROM analytics_heartbeats")
+    suspend fun deleteAll()
+
     @Query("SELECT COUNT(*) FROM analytics_heartbeats")
     suspend fun count(): Long
 

@@ -2,6 +2,7 @@ package coredevices.pebble.firmware
 
 import co.touchlab.kermit.Logger
 import com.russhwolf.settings.Settings
+import coredevices.util.CommonBuildKonfig
 import io.rebble.libpebblecommon.connection.AppContext
 import io.rebble.libpebblecommon.connection.FirmwareUpdateCheckResult
 import io.rebble.libpebblecommon.connection.PebbleIdentifier
@@ -82,6 +83,10 @@ class RealFirmwareUpdateUiTracker(
     }
 
     override fun updateWatchNow(libPebble: LibPebble, identifier: String) {
+        if (CommonBuildKonfig.FDROID_BUILD) {
+            logger.w { "Ignoring direct firmware update action in F-Droid build" }
+            return
+        }
         removeNotification(identifier)
         val watch =
             libPebble.watches.value.firstOrNull { it.identifier.asString == identifier }

@@ -13,6 +13,7 @@ import co.touchlab.kermit.Logger
 import com.eygraber.uri.toAndroidUri
 import coredevices.pebble.RealPebbleDeepLinkHandler.Companion.NOTIFICATION_INTENT_URI_SHOW_WATCHES
 import coredevices.pebble.RealPebbleDeepLinkHandler.Companion.updateNowUri
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.R
 import io.rebble.libpebblecommon.connection.AppContext
 import io.rebble.libpebblecommon.connection.LibPebble
@@ -66,17 +67,19 @@ actual fun notifyFirmwareUpdate(
         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
         .setContentIntent(viewPendingIntent)
         .setAutoCancel(true)
-        .addAction(
+    if (!CommonBuildKonfig.FDROID_BUILD) {
+        builder.addAction(
             NotificationCompat.Action.Builder(null, "Update Now", updatePhonePendingIntent)
                 .setShowsUserInterface(true)
                 .build()
         )
-        .extend(
+        builder.extend(
             NotificationCompat.WearableExtender()
                 .addAction(
                     NotificationCompat.Action.Builder(null, "Update Now", updateIntentWatch).build()
                 )
         )
+    }
     val notificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     notificationManager.notify(key, builder.build())

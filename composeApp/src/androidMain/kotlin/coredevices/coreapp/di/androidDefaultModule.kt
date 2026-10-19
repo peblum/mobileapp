@@ -4,7 +4,6 @@ import CoreAppVersion
 import PlatformContext
 import PlatformShareLauncher
 import android.content.Context
-import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import coredevices.analytics.createAndroidAnalytics
 import coredevices.coreapp.PebbleBackgroundManager
 import coredevices.coreapp.appVersionName
@@ -21,6 +20,7 @@ import coredevices.util.AndroidPlatform
 import coredevices.util.auth.AppleAuthUtil
 import coredevices.util.CompanionDevice
 import coredevices.util.CoreConfigFlow
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.auth.GoogleAuthUtil
 import coredevices.util.PermissionRequester
 import coredevices.util.Platform
@@ -36,13 +36,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
-import org.koin.dsl.binds
 import org.koin.dsl.module
 import kotlin.time.Duration
 import kotlin.time.toJavaDuration
 
 val androidDefaultModule = module {
-    singleOf(::RealGoogleAuthUtil) binds arrayOf(GoogleAuthUtil::class, SilentSignIn::class)
+    singleOf(::RealGoogleAuthUtil) bind GoogleAuthUtil::class
+    single<SilentSignIn> { get<RealGoogleAuthUtil>() }
     singleOf(::RealAppleAuthUtil) bind AppleAuthUtil::class
     singleOf(::RealGithubAuthUtil) bind GitHubAuthUtil::class
     factory { params ->
@@ -56,15 +56,16 @@ val androidDefaultModule = module {
     singleOf(::AndroidPlatform) bind Platform::class
     singleOf(::AndroidOAuthLauncher) bind OAuthLauncher::class
     single { CoreAppVersion(get<Context>().appVersionName) }
-    factory { AppUpdateManagerFactory.create(get()) }
     singleOf(::PlatformContext)
     singleOf(::AndroidPermissionRequester) bind PermissionRequester::class
     singleOf(::AndroidCompanionDevice) bind CompanionDevice::class
     singleOf(::AndroidAppUpdate) bind AppUpdate::class
     single {
         val pebbleDelegate = get<PebbleAndroidDelegate>()
-        val enabledFlow = get<CoreConfigFlow>().flow.map { it.enableIndex }
-        val ringDelegate = get<RingDelegate>()
+        val enabledFlow = get<CoreConfigFlow>().flow.map {
+            CommonBuildKonfig.INDEX_HARDWARE_ENABLED && it.enableIndex
+        }
+        val ringDelegate by lazy { get<RingDelegate>() }
         RequiredPermissions(
             pebbleDelegate.requiredPermissions.combine(enabledFlow) { permissions, enabled ->
                 permissions + if (enabled) ringDelegate.requiredRuntimePermissions() else emptySet()
@@ -73,5 +74,14 @@ val androidDefaultModule = module {
     }
     single { createAndroidAnalytics(get()) }
     singleOf(::ModelDownloadManager)
-    singleOf(::PebbleBackgroundManager)
+    single {
+        PebbleBackgroundManager(
+            context = get(),
+            commonPrefsProvider = lazy { get() },
+            coreConfigFlow = get(),
+            libPebble = get(),
+            libIndexProvider = lazy { get() },
+            androidCompanionDevice = get(),
+        )
+    }
 }

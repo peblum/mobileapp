@@ -130,7 +130,7 @@ When adding a new format/encoding, prefer keeping the local storage format uncha
 
 When asked to make a release build and install it on a local device, follow the GitHub Actions release build shape instead of inventing a shortcut:
 
-1. Add or confirm `LOCAL_RELEASE_BUILD=true` in the root `local.properties`. This makes the release variant use the debug signing config, so it can install over an existing local/debug app without uninstalling.
+1. For a normal build, add or confirm `LOCAL_RELEASE_BUILD=true` in the root `local.properties`. This makes the release variant use the debug signing config, so it can install over an existing local/debug app without uninstalling. F-Droid release builds remain unsigned.
 2. Build from the repo root with `./gradlew :androidApp:assembleRelease --stacktrace --no-daemon`. Do not skip release lint unless the user explicitly asks.
 3. Install over the existing app with `adb -s <device-id> install -r androidApp/build/outputs/apk/release/androidApp-release.apk`. Do not uninstall first unless explicitly requested.
 4. Launch and verify with logcat:
@@ -138,5 +138,5 @@ When asked to make a release build and install it on a local device, follow the 
     - `adb -s <device-id> shell monkey -p coredevices.coreapp -c android.intent.category.LAUNCHER 1`
     - wait long enough for `PebbleService` / Ring BLE scanning to start, then check for `FATAL EXCEPTION`, `ClassNotFoundException`, `Room cannot verify`, and `Process: coredevices.coreapp`.
 
-Release builds are minified. If a release-only crash appears in Haversine/native BLE code, check R8 keep rules before changing app logic. In particular, the Haversine native library resolves `com.wtlp.haversinesatellitelibrary.logging.HaversineLog` by exact JVM class name, so the app proguard rules must keep that class.
+Normal release builds are minified. If a release-only crash appears in Haversine/native BLE code, check R8 keep rules before changing app logic. In particular, the Haversine native library resolves `com.wtlp.haversinesatellitelibrary.logging.HaversineLog` by exact JVM class name, so the normal app proguard rules must keep that class. F-Droid builds use `:haversine-stubs` and do not package this library.
 

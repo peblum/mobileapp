@@ -14,10 +14,12 @@ import org.koin.core.component.get
 import org.koin.core.component.inject
 import org.koin.core.parameter.parametersOf
 
-class AgentFactory: KoinComponent {
+class AgentFactory(
+    private val isSignedIn: () -> Boolean = {
+        Firebase.auth.currentUser?.emailOrNull != null
+    },
+) : KoinComponent {
     private val prefs by inject<Preferences>()
-
-    private val signedIn get() = Firebase.auth.currentUser?.emailOrNull != null
 
     private fun local(conversation: List<ConversationMessageDocument>): Agent =
         get<IndexAgentCactus> { parametersOf(conversation) }
@@ -34,12 +36,12 @@ class AgentFactory: KoinComponent {
                 when (prefs.llmMode.value) {
                     LlmMode.LocalOnly -> local(existingConversation)
                     LlmMode.RemoteOnly -> {
-                        if (!signedIn) {
+                        if (!isSignedIn()) {
                             throw AgentAuthenticationException("User must be authenticated to use online LLM agent")
                         }
                         remote(existingConversation)
                     }
-                    LlmMode.RemoteFirst -> if (!signedIn) {
+                    LlmMode.RemoteFirst -> if (!isSignedIn()) {
                         local(existingConversation)
                     } else {
                         FallbackAgent(
@@ -52,7 +54,7 @@ class AgentFactory: KoinComponent {
             }
             // Always online, because, well, search
             ChatMode.Search -> {
-                if (Firebase.auth.currentUser?.emailOrNull == null) {
+                if (!isSignedIn()) {
                     throw AgentAuthenticationException("User must be authenticated to use search mode")
                 }
                 get<SearchAgentNenya> { parametersOf(existingConversation) }
@@ -63,7 +65,7 @@ class AgentFactory: KoinComponent {
                     SandboxModelType.IndexAgent ->
                         createForChatMode(ChatMode.Normal, existingConversation)
                     SandboxModelType.Default, SandboxModelType.HighCapability -> {
-                        if (Firebase.auth.currentUser?.emailOrNull == null) {
+                        if (!isSignedIn()) {
                             throw AgentAuthenticationException("User must be authenticated to use MCP sandbox mode")
                         }
                         val model = when (mode.group.modelType) {

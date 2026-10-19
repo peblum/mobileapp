@@ -25,6 +25,7 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 private const val DEFAULT_PKG = "com.example.app"
+private const val OWN_PACKAGE = "eu.example.repebble"
 
 class NotificationDecisionTest {
 
@@ -96,6 +97,7 @@ class NotificationDecisionTest {
         inflightNotifications = inflight,
         notificationConfig = config,
         isLocalOnly = isLocalOnly,
+        ownPackageName = OWN_PACKAGE,
         isRuleFiltered = { isRuleFiltered },
         screenIsOnAndUnlocked = { screenIsOnAndUnlocked },
     )
@@ -210,9 +212,16 @@ class NotificationDecisionTest {
     }
 
     @Test
-    fun `pebble test notification bypasses screen-on check`() = runTest {
-        val n = notification("coredevices.coreapp", "Test Notification", body = null)
+    fun `own test notification bypasses screen-on check`() = runTest {
+        val n = notification(OWN_PACKAGE, "Test Notification", body = null)
         val config = NotificationConfig(alwaysSendNotifications = false)
         assertEquals(SendToWatch, decide(n, screenIsOnAndUnlocked = true, config = config))
+    }
+
+    @Test
+    fun `test notification from another package does not bypass screen-on check`() = runTest {
+        val n = notification("coredevices.coreapp", "Test Notification", body = null)
+        val config = NotificationConfig(alwaysSendNotifications = false)
+        assertEquals(NotSentScreenOn, decide(n, screenIsOnAndUnlocked = true, config = config))
     }
 }

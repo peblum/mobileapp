@@ -17,14 +17,38 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-class FirmwareUpdateCheck(
-    private val memfault: Memfault,
-    private val engDashOta: EngDashOta,
-    private val cohorts: Cohorts,
-    private val coreConfig: CoreConfigFlow,
-    private val coreAnalytics: CoreAnalytics,
-    private val clock: Clock = Clock.System,
+class FirmwareUpdateCheck internal constructor(
+    private val getLatestFirmware: suspend (WatchInfo) -> FirmwareUpdateCheckResult,
+    private val clock: Clock,
+    private val automaticChecksAllowed: Boolean,
 ) {
+    constructor(
+        memfault: Memfault,
+        engDashOta: EngDashOta,
+        cohorts: Cohorts,
+        coreConfig: CoreConfigFlow,
+        coreAnalytics: CoreAnalytics,
+        clock: Clock = Clock.System,
+    ) : this(
+        getLatestFirmware = { watch ->
+            when {
+                watch.platform == UNKNOWN ->
+                    FirmwareUpdateCheckResult.UpdateCheckFailed("Unknown platform")
+                watch.platform.isCoreDevice() -> coreDeviceFirmwareCheck(
+                    watch = watch,
+                    memfault = memfault,
+                    engDashOta = engDashOta,
+                    cohorts = cohorts,
+                    coreConfig = coreConfig,
+                    coreAnalytics = coreAnalytics,
+                )
+                else -> cohorts.getLatestFirmware(watch)
+            }
+        },
+        clock = clock,
+        automaticChecksAllowed = !CommonBuildKonfig.FDROID_BUILD,
+    )
+
     private val logger = Logger.withTag("FirmwareUpdateCheck")
 
     private data class CacheKey(
@@ -51,6 +75,21 @@ class FirmwareUpdateCheck(
         val fwVersion = watch.runningFwVersion.stringVersion
         val isRecovery = watch.runningFwVersion.isRecovery
         val now = clock.now()
+        if (!automaticChecksAllowed && !force) {
+            logger.v { "Skipping automatic firmware update check in F-Droid build" }
+            return mutex.withLock {
+                val cached = cache[key]
+                    ?.takeIf { it.fwVersion == fwVersion && it.isRecovery == isRecovery }
+                if (cached != null && cached.expiresAt <= now) {
+                    cache.remove(key)
+                }
+                firmwareUpdateResultWhenSkipped(
+                    cachedResult = cached?.result,
+                    cacheExpiresAt = cached?.expiresAt,
+                    now = now,
+                )
+            }
+        }
         if (!force) {
             mutex.withLock {
                 cache[key]
@@ -62,7 +101,7 @@ class FirmwareUpdateCheck(
                     }
             }
         }
-        val result = doCheck(watch)
+        val result = getLatestFirmware(watch)
         // Only cache definitive answers — transient failures (network, rate limit)
         // must retry on the next connect, not be locked in for the TTL.
         if (result !is FirmwareUpdateCheckResult.UpdateCheckFailed) {
@@ -73,36 +112,52 @@ class FirmwareUpdateCheck(
         return result
     }
 
-    private suspend fun doCheck(watch: WatchInfo): FirmwareUpdateCheckResult = when {
-        watch.platform == UNKNOWN -> FirmwareUpdateCheckResult.UpdateCheckFailed("Unknown platform")
-        watch.platform.isCoreDevice() -> coreDeviceCheck(watch)
-        else -> cohorts.getLatestFirmware(watch)
-    }
-
-    private fun engDashOtaEnabled(): Boolean =
-        CommonBuildKonfig.BUG_URL != null && coreConfig.value.useEngDashOta
-
-    /** Prefer eng-dash when opted in, falling back to whichever source we'd otherwise have used. */
-    private suspend fun coreDeviceCheck(watch: WatchInfo): FirmwareUpdateCheckResult {
-        if (engDashOtaEnabled()) {
-            val result = engDashOta.getLatestFirmware(watch)
-            if (result !is FirmwareUpdateCheckResult.UpdateCheckFailed) {
-                return result
-            }
-            logger.w { "eng-dash OTA check failed (${result.error}); falling back" }
-            coreAnalytics.logEvent("core_ota_failed")
-        }
-        return if (CommonBuildKonfig.MEMFAULT_TOKEN != null) {
-            memfault.getLatestFirmware(watch)
-        } else {
-            cohorts.getLatestFirmware(watch)
-        }
-    }
-
     companion object {
         private val CACHE_TTL: Duration = 15.minutes
     }
 }
+
+/** Prefer eng-dash when opted in, falling back to whichever source we'd otherwise have used. */
+private suspend fun coreDeviceFirmwareCheck(
+    watch: WatchInfo,
+    memfault: Memfault,
+    engDashOta: EngDashOta,
+    cohorts: Cohorts,
+    coreConfig: CoreConfigFlow,
+    coreAnalytics: CoreAnalytics,
+): FirmwareUpdateCheckResult {
+    if (CommonBuildKonfig.BUG_URL != null && coreConfig.value.useEngDashOta) {
+        val result = engDashOta.getLatestFirmware(watch)
+        if (result !is FirmwareUpdateCheckResult.UpdateCheckFailed) {
+            return result
+        }
+        Logger.withTag("FirmwareUpdateCheck")
+            .w { "eng-dash OTA check failed (${result.error}); falling back" }
+        coreAnalytics.logEvent("core_ota_failed")
+    }
+    return if (shouldUseMemfaultForFirmwareUpdates(
+            platform = watch.platform,
+            memfaultToken = CommonBuildKonfig.MEMFAULT_TOKEN,
+        )
+    ) {
+        memfault.getLatestFirmware(watch)
+    } else {
+        cohorts.getLatestFirmware(watch)
+    }
+}
+
+internal fun firmwareUpdateResultWhenSkipped(
+    cachedResult: FirmwareUpdateCheckResult?,
+    cacheExpiresAt: Instant?,
+    now: Instant,
+): FirmwareUpdateCheckResult =
+    cachedResult?.takeIf { cacheExpiresAt != null && cacheExpiresAt > now }
+        ?: FirmwareUpdateCheckResult.FoundNoUpdate
+
+internal fun shouldUseMemfaultForFirmwareUpdates(
+    platform: WatchHardwarePlatform,
+    memfaultToken: String?,
+): Boolean = platform.isCoreDevice() && memfaultToken != null
 
 fun WatchHardwarePlatform.isCoreDevice(): Boolean = when (this) {
     UNKNOWN, PEBBLE_ONE_EV_1, PEBBLE_ONE_EV_2, PEBBLE_ONE_EV_2_3, PEBBLE_ONE_EV_2_4,

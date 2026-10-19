@@ -1,0 +1,535 @@
+name: APK / master
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: apk-master-publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and test unsigned nightly APK
+    # Forgejo defines github as an alias of its native context.
+    if: github.ref == 'refs/heads/master'
+    runs-on: [native, android-untrusted]
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: https://data.forgejo.org/actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build and test F-Droid variants
+        run: |
+          set -euo pipefail
+          gradle_home=$(mktemp -d)
+          trap 'rm -rf -- "$gradle_home"' EXIT
+          env \
+            -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RUNTIME_TOKEN \
+            -u FORGEJO_TOKEN \
+            -u GITHUB_TOKEN \
+            GRADLE_USER_HOME="$gradle_home" \
+            nix develop --command scripts/ci/build-fdroid-apks.sh forgejo
+
+      - name: Collect and verify unsigned APK
+        run: |
+          set -euo pipefail
+          env \
+            -u ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            -u ACTIONS_RUNTIME_TOKEN \
+            -u FORGEJO_TOKEN \
+            -u GITHUB_TOKEN \
+            nix develop --command \
+            bash <<'SCRIPT'
+          set -euo pipefail
+          revision=$(git rev-parse HEAD)
+          short_revision=${revision:0:12}
+          metadata=androidApp/build/outputs/apk/nightly/output-metadata.json
+          version_code=$(jq -er \
+            'if (.elements | length) == 1 then .elements[0].versionCode else error("expected one APK") end' \
+            "$metadata")
+          apk_name="Pebble-nightly-$version_code-$short_revision-unsigned.apk"
+
+          scripts/ci/collect-apks.sh \
+            --variant nightly \
+            --output-dir dist/nightly \
+            --apk-name "$apk_name"
+          (
+            cd dist/nightly
+            sha256sum --check SHA256SUMS
+          )
+          if apksigner verify "dist/nightly/$apk_name" >/dev/null 2>&1; then
+            echo "Nightly input must remain unsigned" >&2
+            exit 1
+          fi
+          zipalign -c -P 16 4 "dist/nightly/$apk_name"
+          SCRIPT
+
+      - name: Upload unsigned APK for signing
+        uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e # Forgejo-patched v4
+        with:
+          name: pebble-nightly-unsigned-${{ github.sha }}
+          path: dist/nightly/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload reports after failure
+        if: failure()
+        uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e # Forgejo-patched v4
+        with:
+          name: pebble-master-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            **/build/reports/
+            **/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  publish:
+    name: Sign and publish immutable nightly APK
+    if: github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: [native, android-publish]
+    timeout-minutes: 20
+    enable-openid-connect: true
+    steps:
+      - name: Download unsigned APK
+        uses: https://data.forgejo.org/forgejo/download-artifact@d8d0a99033603453ad2255e58720b460a0555e1e # Forgejo-patched v4
+        with:
+          name: pebble-nightly-unsigned-${{ github.sha }}
+          path: incoming
+
+      - name: Verify publishing toolchain
+        run: |
+          set -euo pipefail
+          ((BASH_VERSINFO[0] > 4 ||
+            (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4)))
+          for command_name in \
+            aapt2 \
+            apkanalyzer \
+            apksigner \
+            awk \
+            curl \
+            dirname \
+            find \
+            install \
+            java \
+            jq \
+            mkdir \
+            mktemp \
+            rm \
+            sha256sum \
+            tr \
+            wc \
+            xmllint \
+            zipalign; do
+            command -v "$command_name" >/dev/null
+          done
+
+      - name: Request and verify remote APK signature
+        id: sign
+        env:
+          SIGNER_URL: ${{ vars.FORGEJO_APK_SIGNER_URL }}
+          SIGNER_AUDIENCE: ${{ vars.FORGEJO_APK_SIGNER_AUDIENCE }}
+          EXPECTED_SIGNER_SHA256: ${{ vars.FORGEJO_APK_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          export LC_ALL=C
+          : "${SIGNER_URL:?FORGEJO_APK_SIGNER_URL is required}"
+          : "${SIGNER_AUDIENCE:?FORGEJO_APK_SIGNER_AUDIENCE is required}"
+          : "${EXPECTED_SIGNER_SHA256:?FORGEJO_APK_CERT_SHA256 is required}"
+          [[ "$SIGNER_URL" == https://* ]] || {
+            echo "FORGEJO_APK_SIGNER_URL must use HTTPS" >&2
+            exit 1
+          }
+          signer_url=${SIGNER_URL%/}
+
+          mapfile -d '' unsigned_apks < <(
+            find incoming -type f -name '*-unsigned.apk' -print0
+          )
+          ((${#unsigned_apks[@]} == 1)) || {
+            echo "Expected exactly one unsigned APK" >&2
+            exit 1
+          }
+          mapfile -d '' manifests < <(
+            find incoming -type f -name build-manifest.json -print0
+          )
+          ((${#manifests[@]} == 1)) || {
+            echo "Expected exactly one build manifest" >&2
+            exit 1
+          }
+          mapfile -d '' output_metadata_files < <(
+            find incoming -type f -name output-metadata.json -print0
+          )
+          ((${#output_metadata_files[@]} == 1)) || {
+            echo "Expected exactly one Android output metadata file" >&2
+            exit 1
+          }
+
+          unsigned_apk=${unsigned_apks[0]}
+          build_manifest=${manifests[0]}
+          output_metadata=${output_metadata_files[0]}
+          manifest_dir=$(dirname -- "$build_manifest")
+          [[ "$(dirname -- "$unsigned_apk")" == "$manifest_dir" ]]
+          [[ "$(dirname -- "$output_metadata")" == "$manifest_dir" ]]
+          [[ "$(jq -er '.source.builtRevision' "$build_manifest")" == "$FORGEJO_SHA" ]]
+          [[ "$(jq -er '.source.triggerRevision' "$build_manifest")" == "$FORGEJO_SHA" ]]
+          [[ "$(jq -er '.android.variant' "$build_manifest")" == "nightly" ]]
+          [[ "$(jq -er '.android.applicationId' "$build_manifest")" == \
+            "coredevices.coreapp.nightly" ]]
+          [[ "$(sha256sum "$output_metadata" | awk '{print $1}')" == \
+            "$(jq -er '.android.outputMetadataSha256' "$build_manifest")" ]]
+
+          version_code=$(jq -er \
+            'if (.artifacts | length) == 1 then .artifacts[0].androidElement.versionCode else error("expected one APK") end' \
+            "$build_manifest")
+          version_name=$(jq -er '.artifacts[0].androidElement.versionName' "$build_manifest")
+          artifact_name=$(jq -er '.artifacts[0].fileName' "$build_manifest")
+          artifact_sha256=$(jq -er '.artifacts[0].sha256' "$build_manifest")
+          artifact_size=$(jq -er '.artifacts[0].sizeBytes' "$build_manifest")
+          [[ "$artifact_name" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*-unsigned[.]apk$ ]]
+          [[ "$artifact_sha256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$artifact_size" =~ ^[1-9][0-9]*$ ]]
+          [[ "${unsigned_apk##*/}" == "$artifact_name" ]]
+          [[ "$(sha256sum "$unsigned_apk" | awk '{print $1}')" == \
+            "$artifact_sha256" ]]
+          actual_unsigned_size=$(wc -c <"$unsigned_apk")
+          actual_unsigned_size=${actual_unsigned_size//[[:space:]]/}
+          [[ "$actual_unsigned_size" == "$artifact_size" ]]
+          [[ "$(<"$manifest_dir/SHA256SUMS")" == \
+            "$artifact_sha256  $artifact_name" ]]
+          jq -e \
+            --arg application_id "coredevices.coreapp.nightly" \
+            --argjson version_code "$version_code" \
+            --arg version_name "$version_name" \
+            '
+              .variantName == "nightly"
+              and .applicationId == $application_id
+              and (.elements | length) == 1
+              and .elements[0].versionCode == $version_code
+              and .elements[0].versionName == $version_name
+            ' "$output_metadata" >/dev/null
+
+          actual_application_id=$(apkanalyzer manifest application-id "$unsigned_apk")
+          actual_version_code=$(apkanalyzer manifest version-code "$unsigned_apk")
+          actual_version_name=$(apkanalyzer manifest version-name "$unsigned_apk")
+          actual_min_sdk=$(apkanalyzer manifest min-sdk "$unsigned_apk")
+          actual_target_sdk=$(apkanalyzer manifest target-sdk "$unsigned_apk")
+          [[ "$actual_application_id" == "coredevices.coreapp.nightly" ]]
+          [[ "$(aapt2 dump packagename "$unsigned_apk")" == "$actual_application_id" ]]
+          [[ "$actual_version_code" == "$version_code" ]]
+          [[ "$actual_version_name" == "$version_name" ]]
+          [[ "$actual_min_sdk" == "26" ]]
+          [[ "$actual_target_sdk" == "36" ]]
+
+          manifest_xml=$(apkanalyzer manifest print "$unsigned_apk")
+          for permission in \
+            io.rebble.pebblekit2.permission.SEND_DATA_TO_WATCH \
+            io.rebble.pebblekit2.permission.RECEIVE_DATA_FROM_WATCH \
+            io.rebble.pebblekit2.permission.READ_PROVIDER; do
+            [[ "$(xmllint --nonet --xpath \
+              "count(/*[local-name()='manifest']/*[local-name()='permission'][@*[local-name()='name']='$permission'])" \
+              - <<<"$manifest_xml")" == "0" ]]
+          done
+          [[ "$(xmllint --nonet --xpath \
+            "count(//*[local-name()='provider'][@*[local-name()='name']='io.rebble.libpebblecommon.pebblekit.classic.PebbleKitProvider' and @*[local-name()='authorities']='coredevices.coreapp.nightly.provider.basalt' and @*[local-name()='enabled']='false'])" \
+            - <<<"$manifest_xml")" == "1" ]]
+
+          if apksigner verify "$unsigned_apk" >/dev/null 2>&1; then
+            echo "Refusing to re-sign an already signed APK" >&2
+            exit 1
+          fi
+          zipalign -c -P 16 4 "$unsigned_apk"
+
+          short_revision=${FORGEJO_SHA:0:12}
+          package_version="master-$version_code-$short_revision"
+          signed_name="Pebble-master-$version_code-$short_revision.apk"
+
+          request_dir=$(mktemp -d)
+          cleanup() {
+            rm -rf -- "$request_dir"
+          }
+          trap cleanup EXIT
+          umask 077
+          zipalign -f -P 16 4 "$unsigned_apk" "$request_dir/aligned.apk"
+          aligned_sha256=$(sha256sum "$request_dir/aligned.apk" | awk '{print $1}')
+
+          : "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?OIDC request token is unavailable}"
+          : "${ACTIONS_ID_TOKEN_REQUEST_URL:?OIDC request URL is unavailable}"
+          encoded_audience=$(jq -rn --arg value "$SIGNER_AUDIENCE" '$value | @uri')
+          oidc_separator='?'
+          if [[ "$ACTIONS_ID_TOKEN_REQUEST_URL" == *'?'* ]]; then
+            oidc_separator='&'
+          fi
+          signer_token=$(
+            curl --fail --silent --show-error \
+              --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL${oidc_separator}audience=$encoded_audience" |
+              jq -er '.value'
+          )
+          echo "::add-mask::$signer_token"
+
+          mkdir publish
+          curl --fail --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $signer_token" \
+            --header 'Content-Type: application/vnd.android.package-archive' \
+            --header "X-Pebble-Unsigned-SHA256: $aligned_sha256" \
+            --data-binary "@$request_dir/aligned.apk" \
+            --output "publish/$signed_name" \
+            "$signer_url/v1/sign/android-apk"
+          unset signer_token
+
+          verification=$(apksigner verify \
+            --verbose \
+            --print-certs \
+            --Werr \
+            "publish/$signed_name")
+          printf '%s\n' "$verification"
+          [[ "$verification" == \
+            *"Verified using v2 scheme (APK Signature Scheme v2): true"* ]] || {
+            echo "Signing service did not return an APK Signature Scheme v2 signature" >&2
+            exit 1
+          }
+          [[ "$verification" == *"Number of signers: 1"* ]] || {
+            echo "Signing service must return exactly one APK signer" >&2
+            exit 1
+          }
+          zipalign -c -P 16 4 "publish/$signed_name"
+          [[ "$(apkanalyzer manifest application-id "publish/$signed_name")" == \
+            "$actual_application_id" ]]
+          [[ "$(apkanalyzer manifest version-code "publish/$signed_name")" == \
+            "$actual_version_code" ]]
+          [[ "$(apkanalyzer manifest version-name "publish/$signed_name")" == \
+            "$actual_version_name" ]]
+          [[ "$(apkanalyzer manifest min-sdk "publish/$signed_name")" == \
+            "$actual_min_sdk" ]]
+          [[ "$(apkanalyzer manifest target-sdk "publish/$signed_name")" == \
+            "$actual_target_sdk" ]]
+
+          signed_sha256=$(sha256sum "publish/$signed_name" | awk '{print $1}')
+          signed_size=$(wc -c <"publish/$signed_name")
+          signed_size=${signed_size//[[:space:]]/}
+          signer_sha256=$(printf '%s\n' "$verification" |
+            awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}')
+          [[ -n "$signer_sha256" ]] || {
+            echo "Could not read signing certificate digest" >&2
+            exit 1
+          }
+          signer_sha256=$(printf '%s' "$signer_sha256" |
+            tr -d ':' | tr '[:upper:]' '[:lower:]')
+          expected_signer_sha256=$(printf '%s' "$EXPECTED_SIGNER_SHA256" |
+            tr -d ':' | tr '[:upper:]' '[:lower:]')
+          [[ "$expected_signer_sha256" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "FORGEJO_APK_CERT_SHA256 must be a SHA-256 certificate digest" >&2
+            exit 1
+          }
+          [[ "$signer_sha256" == "$expected_signer_sha256" ]] || {
+            echo "Signing certificate does not match FORGEJO_APK_CERT_SHA256" >&2
+            exit 1
+          }
+          unsigned_sha256=$(sha256sum "$unsigned_apk" | awk '{print $1}')
+          install -m 0644 -- \
+            "$output_metadata" \
+            publish/unsigned-output-metadata.json
+          jq \
+            --arg packageVersion "$package_version" \
+            --arg signedName "$signed_name" \
+            --arg signedSha256 "$signed_sha256" \
+            --argjson signedSize "$signed_size" \
+            --arg signerSha256 "$signer_sha256" \
+            --arg unsignedSha256 "$unsigned_sha256" \
+            --arg applicationId "$actual_application_id" \
+            --argjson versionCode "$actual_version_code" \
+            --arg versionName "$actual_version_name" \
+            --argjson minSdk "$actual_min_sdk" \
+            --argjson targetSdk "$actual_target_sdk" \
+            '
+              del(
+                .generatedAt,
+                .source.eventName,
+                .source.runId,
+                .source.runNumber,
+                .source.runAttempt,
+                .source.serverUrl,
+                .source.triggerRevision
+              )
+              | .unsignedArtifacts = .artifacts
+              | .artifacts = [{
+                  fileName: $signedName,
+                  sha256: $signedSha256,
+                  sizeBytes: $signedSize,
+                  signingCertificateSha256: $signerSha256,
+                  android: {
+                    applicationId: $applicationId,
+                    versionCode: $versionCode,
+                    versionName: $versionName,
+                    minSdk: $minSdk,
+                    targetSdk: $targetSdk
+                  }
+                }]
+              | .publication = {
+                channel: "master",
+                  packageName: "pebble-nightly",
+                  packageVersion: $packageVersion
+                }
+              | .signing = {
+                  unsignedApkSha256: $unsignedSha256,
+                  certificateSha256: $signerSha256
+                }
+            ' "$build_manifest" >publish/build-manifest.json
+          (
+            cd publish
+            sha256sum -- \
+              "$signed_name" \
+              build-manifest.json \
+              unsigned-output-metadata.json >SHA256SUMS
+          )
+
+          printf 'package_version=%s\n' "$package_version" >>"$FORGEJO_OUTPUT"
+
+      - name: Upload signed workflow artifact
+        uses: https://data.forgejo.org/forgejo/upload-artifact@16871d9e8cfcf27ff31822cac382bbb5450f1e1e # Forgejo-patched v4
+        with:
+          name: pebble-master-${{ github.sha }}
+          path: publish/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Publish immutable Generic Package
+        env:
+          AUDIENCE: ${{ vars.FORGEJO_PACKAGE_AUDIENCE }}
+          PACKAGE_VERSION: ${{ steps.sign.outputs.package_version }}
+        run: |
+          set -euo pipefail
+          : "${AUDIENCE:?FORGEJO_PACKAGE_AUDIENCE is required}"
+          : "${PACKAGE_VERSION:?signing step did not return a package version}"
+          : "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?OIDC request token is unavailable}"
+          : "${ACTIONS_ID_TOKEN_REQUEST_URL:?OIDC request URL is unavailable}"
+          [[ "$FORGEJO_SERVER_URL" == https://* ]] || {
+            echo "FORGEJO_SERVER_URL must use HTTPS" >&2
+            exit 1
+          }
+          [[ "$PACKAGE_VERSION" =~ ^master-[1-9][0-9]*-[0-9a-f]{12}$ ]] || {
+            echo "Signing step returned an invalid package version" >&2
+            exit 1
+          }
+          forgejo_server_url=${FORGEJO_SERVER_URL%/}
+
+          encoded_audience=$(jq -rn --arg value "$AUDIENCE" '$value | @uri')
+          oidc_separator='?'
+          if [[ "$ACTIONS_ID_TOKEN_REQUEST_URL" == *'?'* ]]; then
+            oidc_separator='&'
+          fi
+          package_token=$(
+            curl --fail --silent --show-error \
+              --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL${oidc_separator}audience=$encoded_audience" |
+              jq -er '.value'
+          )
+          echo "::add-mask::$package_token"
+
+          temporary_dir=$(mktemp -d)
+          cleanup() {
+            rm -rf -- "$temporary_dir"
+          }
+          trap cleanup EXIT
+          authorization="Authorization: Bearer $package_token"
+
+          remote_matches() {
+            local url=$1
+            local local_file=$2
+            local remote_file=$3
+            local status
+            status=$(curl --silent --show-error \
+              --location \
+              --max-redirs 3 \
+              --proto '=https' \
+              --proto-redir '=https' \
+              --header "$authorization" \
+              --output "$remote_file" \
+              --write-out '%{http_code}' \
+              "$url")
+            case "$status" in
+              200)
+                [[ "$(sha256sum "$local_file" | awk '{print $1}')" == \
+                  "$(sha256sum "$remote_file" | awk '{print $1}')" ]]
+                ;;
+              404)
+                return 1
+                ;;
+              *)
+                echo "Unexpected HTTP $status while checking $url" >&2
+                exit 1
+                ;;
+            esac
+          }
+
+          shopt -s nullglob
+          signed_apks=(publish/*.apk)
+          ((${#signed_apks[@]} == 1)) || {
+            echo "Expected exactly one signed APK to publish" >&2
+            exit 1
+          }
+          package_files=(
+            "${signed_apks[0]}"
+            publish/build-manifest.json
+            publish/unsigned-output-metadata.json
+            publish/SHA256SUMS
+          )
+
+          for file in "${package_files[@]}"; do
+            [[ -f "$file" ]] || {
+              echo "Package file is missing: $file" >&2
+              exit 1
+            }
+            file_name=${file##*/}
+            package_url="$forgejo_server_url/api/packages/$FORGEJO_REPOSITORY_OWNER/generic/pebble-nightly/$PACKAGE_VERSION/$file_name"
+            remote_file="$temporary_dir/$file_name.remote"
+
+            if remote_matches "$package_url" "$file" "$remote_file"; then
+              echo "Package file already exists with matching content: $file_name"
+              continue
+            fi
+
+            response_file="$temporary_dir/$file_name.response"
+            status=$(curl --silent --show-error \
+              --request PUT \
+              --header "$authorization" \
+              --header 'Content-Type: application/octet-stream' \
+              --upload-file "$file" \
+              --output "$response_file" \
+              --write-out '%{http_code}' \
+              "$package_url")
+            case "$status" in
+              201)
+                if remote_matches "$package_url" "$file" "$remote_file"; then
+                  echo "Published and verified package file: $file_name"
+                else
+                  echo "Published package file failed read-back verification: $file_name" >&2
+                  exit 1
+                fi
+                ;;
+              409)
+                if remote_matches "$package_url" "$file" "$remote_file"; then
+                  echo "Package file was published concurrently: $file_name"
+                else
+                  echo "Package file exists with different content: $file_name" >&2
+                  exit 1
+                fi
+                ;;
+              *)
+                echo "Unexpected HTTP $status while publishing $file_name" >&2
+                exit 1
+                ;;
+            esac
+          done

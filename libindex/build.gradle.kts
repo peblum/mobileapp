@@ -12,6 +12,8 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+
 room {
     schemaDirectory("schema")
 }
@@ -91,8 +93,12 @@ kotlin {
                 implementation(libs.ktor.client.logging)
                 implementation(libs.webview)
                 implementation(libs.uri)
-                implementation(libs.coredevices.haversine)
-                implementation(project(":cactus"))
+                if (fdroidBuild) {
+                    implementation(project(":haversine-stubs"))
+                } else {
+                    implementation(libs.coredevices.haversine)
+                }
+                implementation(project(if (fdroidBuild) ":cactus-stubs" else ":cactus"))
                 implementation(project(":libpebble3"))
                 implementation(project(":index-ai"))
                 implementation(libs.kmpio)

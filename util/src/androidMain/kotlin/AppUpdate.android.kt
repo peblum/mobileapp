@@ -11,7 +11,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import co.touchlab.kermit.Logger
 import com.google.android.play.core.appupdate.AppUpdateInfo
-import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.ktx.AppUpdateResult
 import com.google.android.play.core.ktx.requestUpdateFlow
@@ -36,11 +36,11 @@ actual data class AppUpdatePlatformContent(
 )
 
 class AndroidAppUpdate(
-    private val appUpdateManager: AppUpdateManager,
     private val settings: Settings,
     private val context: Context,
 ) : AppUpdate {
     private val logger = Logger.withTag("AndroidAppUpdate")
+    private val appUpdateManager = AppUpdateManagerFactory.create(context)
 
     override val updateAvailable: StateFlow<AppUpdateState> = appUpdateManager.requestUpdateFlow()
         .onStart {

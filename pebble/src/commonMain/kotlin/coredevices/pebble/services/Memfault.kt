@@ -5,6 +5,7 @@ import com.russhwolf.settings.Settings
 import coredevices.pebble.Platform
 import coredevices.pebble.ui.SettingsKeys.KEY_ENABLE_MEMFAULT_UPLOADS
 import coredevices.util.CommonBuildKonfig
+import coredevices.util.thirdPartyDiagnosticsEnabledByDefault
 import io.ktor.client.HttpClient
 import io.ktor.client.call.NoTransformationFoundException
 import io.ktor.client.call.body
@@ -118,7 +119,11 @@ class Memfault(
     }
 
     suspend fun uploadChunkBatch(chunks: List<ByteArray>, serial: String): Boolean {
-        if (!settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, true)) {
+        if (!settings.getBoolean(
+                KEY_ENABLE_MEMFAULT_UPLOADS,
+                thirdPartyDiagnosticsEnabledByDefault(),
+            )
+        ) {
             logger.d { "Not uploading Memfault chunks (disabled in settings)" }
             return true
         }

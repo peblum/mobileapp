@@ -23,6 +23,7 @@ import coredevices.ring.service.RecordingBackgroundScope
 import coredevices.ring.service.RingSync
 import coredevices.ring.service.recordings.RecordingProcessingQueue
 import coredevices.util.R
+import coredevices.util.CommonBuildKonfig
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -155,8 +156,10 @@ class PebbleService: Service(), KoinComponent {
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        startRingSyncJob()
-        startRecordingDebugNotificationJob()
+        if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+            startRingSyncJob()
+            startRecordingDebugNotificationJob()
+        }
         pebbleBackgroundManager.onServiceStarted()
         return START_STICKY
     }
@@ -167,7 +170,9 @@ class PebbleService: Service(), KoinComponent {
         ringObserverJob = null
         // Scope is not canceled as it's currently application-global
         // TODO: Give background scope a proper lifecycle / scoped inject
-        stopRingJobs()
+        if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+            stopRingJobs()
+        }
         notificationManagerCompat.cancel(1)
         super.onDestroy()
     }

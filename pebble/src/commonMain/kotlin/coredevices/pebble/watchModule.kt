@@ -190,12 +190,33 @@ val watchModule = module {
     factoryOf(::LibPebbleConfig)
     singleOf(::Memfault)
     singleOf(::EngDashOta)
-    singleOf(::MemfaultChunkQueue)
+    single {
+        MemfaultChunkQueue(
+            memfault = get(),
+            dao = get(),
+            settings = get(),
+        )
+    }
     singleOf(::AnalyticsIngest)
-    singleOf(::AnalyticsHeartbeatQueue)
+    single {
+        AnalyticsHeartbeatQueue(
+            ingest = get(),
+            dao = get(),
+            settings = get(),
+        )
+    }
     singleOf(::ContactDeveloperApi)
     factoryOf(::Cohorts)
-    singleOf(::FirmwareUpdateCheck)
+    single {
+        FirmwareUpdateCheck(
+            memfault = get(),
+            engDashOta = get(),
+            cohorts = get(),
+            coreConfig = get(),
+            coreAnalytics = get(),
+            clock = get(),
+        )
+    }
     factoryOf(::PebbleFeatures)
     factoryOf(::WeatherFetcher)
     factoryOf(::LanguagePackRepository)

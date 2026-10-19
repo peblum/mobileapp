@@ -24,6 +24,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "libpebbleroot"
 
+val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+
 include(":libpebble3")
 include(":blobdbgen")
 include(":blobannotations")
@@ -34,8 +36,16 @@ include(":util")
 include(":mcp")
 include(":index-ai")
 include(":resampler")
-include(":cactus")
-include(":cactus-native")
+if (!fdroidBuild) {
+    include(":cactus")
+    include(":cactus-native")
+} else {
+    include(":cactus-stubs")
+    include(":firebase-stubs")
+    include(":haversine-stubs")
+    include(":health-stubs")
+    include(":notifier-stubs")
+}
 include(":libindex")
 include(":experimental")
 include(":krisp-stubs")

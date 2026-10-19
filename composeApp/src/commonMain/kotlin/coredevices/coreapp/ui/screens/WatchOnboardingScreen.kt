@@ -79,11 +79,15 @@ import coredevices.pebble.ui.WatchOnboardingFinished
 import coredevices.pebble.ui.allCollectionUuids
 import coredevices.pebble.ui.asCommonApp
 import coredevices.pebble.ui.connectedWatch
+import coredevices.pebble.ui.fdroidFirmwareUpdateCheckWarning
 import coredevices.pebble.ui.languagePackInstalled
 import coredevices.pebble.ui.launchApp
+import coredevices.pebble.ui.rememberExternalWatchAppConsentRequester
+import coredevices.pebble.ui.rememberFirmwareDownloadConsentRequester
 import coredevices.pebble.ui.rememberSettingsItemsState
 import coredevices.ui.CoreLinearProgressIndicator
 import coredevices.ui.PebbleElevatedButton
+import coredevices.util.CommonBuildKonfig
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDeviceInRecovery
 import io.rebble.libpebblecommon.connection.FirmwareUpdateCheckResult
@@ -177,9 +181,33 @@ fun WatchOnboardingScreen(
                     }
 
                     if (connectedWatch is ConnectedPebbleDeviceInRecovery) {
-                        val firmwareUpdateAvailable = connectedWatch.firmwareUpdateAvailable.result
+                        val firmwareUpdateState = connectedWatch.firmwareUpdateAvailable
+                        val firmwareUpdateAvailable = firmwareUpdateState.result
                         if (firmwareUpdateAvailable !is FirmwareUpdateCheckResult.FoundUpdate) {
-                            SectionText("Checking for PebbleOS updates..")
+                            if (CommonBuildKonfig.FDROID_BUILD) {
+                                SectionText(
+                                    fdroidFirmwareUpdateCheckWarning(
+                                        connectedWatch.watchInfo.platform,
+                                    ).orEmpty(),
+                                )
+
+                                Spacer(modifier = Modifier.height(15.dp))
+
+                                PebbleElevatedButton(
+                                    text = if (firmwareUpdateState.checkingForUpdates) {
+                                        "Checking for PebbleOS updates..."
+                                    } else {
+                                        "Check for PebbleOS update"
+                                    },
+                                    onClick = {
+                                        connectedWatch.checkforFirmwareUpdate(force = true)
+                                    },
+                                    enabled = !firmwareUpdateState.checkingForUpdates,
+                                    primaryColor = true,
+                                )
+                            } else {
+                                SectionText("Checking for PebbleOS updates..")
+                            }
 
                             Spacer(modifier = Modifier.height(15.dp))
 
@@ -191,23 +219,56 @@ fun WatchOnboardingScreen(
                             return@Scaffold
                         }
 
-                        LaunchedEffect(haveStartedFwupSinceLastConnection) {
-                            if (!haveStartedFwupSinceLastConnection) {
-                                logger.d { "Starting firmware update from onboarding screen" }
-                                haveStartedFwupSinceLastConnection = true
-                                haveUpdatedFirmware = true
-                                connectedWatch.updateFirmware(firmwareUpdateAvailable)
-                            }
-                        }
-
-                        SectionText("Updating your watch to the latest version of PebbleOS...")
-                        Spacer(modifier = Modifier.height(15.dp))
-                        val progress = (connectedWatch.firmwareUpdateState as? FirmwareUpdater.FirmwareUpdateStatus.InProgress)?.progress?.collectAsState()
-                        if (progress != null) {
-                            CoreLinearProgressIndicator(
-                                progress = { progress.value },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                        val requestFirmwareDownloadConsent =
+                            rememberFirmwareDownloadConsentRequester(
+                                requestKey =
+                                    connectedWatch.identifier to firmwareUpdateAvailable,
                             )
+
+                        if (CommonBuildKonfig.FDROID_BUILD &&
+                            !haveStartedFwupSinceLastConnection
+                        ) {
+                            SectionText("PebbleOS is required to recover this watch.")
+                            Spacer(modifier = Modifier.height(15.dp))
+                            PebbleElevatedButton(
+                                text = "Download and install PebbleOS",
+                                onClick = {
+                                    requestFirmwareDownloadConsent {
+                                        logger.d {
+                                            "Starting firmware update from onboarding screen"
+                                        }
+                                        haveStartedFwupSinceLastConnection = true
+                                        haveUpdatedFirmware = true
+                                        connectedWatch.updateFirmware(firmwareUpdateAvailable)
+                                    }
+                                },
+                                primaryColor = true,
+                            )
+                        } else {
+                            LaunchedEffect(haveStartedFwupSinceLastConnection) {
+                                if (!haveStartedFwupSinceLastConnection) {
+                                    logger.d {
+                                        "Starting firmware update from onboarding screen"
+                                    }
+                                    haveStartedFwupSinceLastConnection = true
+                                    haveUpdatedFirmware = true
+                                    connectedWatch.updateFirmware(firmwareUpdateAvailable)
+                                }
+                            }
+
+                            SectionText("Updating your watch to the latest version of PebbleOS...")
+                            Spacer(modifier = Modifier.height(15.dp))
+                            val progress =
+                                (connectedWatch.firmwareUpdateState as?
+                                    FirmwareUpdater.FirmwareUpdateStatus.InProgress)
+                                    ?.progress
+                                    ?.collectAsState()
+                            if (progress != null) {
+                                CoreLinearProgressIndicator(
+                                    progress = { progress.value },
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                                )
+                            }
                         }
                         SectionDivider()
                     }
@@ -402,6 +463,7 @@ fun OnboardingAppCarousel(
     // Only use inital list of in-collection IDs (i.e. don't remove from list when they add from this screen)
     val initialAllCollectionUuids = remember(allCollectionUuids != null) { allCollectionUuids.orEmpty() }
     val nativeLockerAddUtil: NativeLockerAddUtil = koinInject()
+    val requestExternalWatchAppConsent = rememberExternalWatchAppConsentRequester()
     val watchType = watch.watchType.watchType
     val apps = remember(storeHome, watchType, initialAllCollectionUuids) {
         storeHome.result.onboarding?.forType(watchType)?.mapNotNull { appId ->
@@ -469,22 +531,24 @@ fun OnboardingAppCarousel(
                         PebbleElevatedButton(
                             text = "Add",
                             onClick = {
-                                added = true
-                                GlobalScope.launch {
-                                    val addResult = nativeLockerAddUtil.addAppToLocker(
-                                        commonAppStore,
-                                        commonAppStore.storeSource
-                                    )
-                                    logger.v { "Add to locker from watch onboarding ${commonAppStore.storeApp?.title} result=$addResult" }
-                                    if (!addResult) {
-                                        snackbarDisplay.showSnackbar("Failed to add app")
-                                        return@launch
+                                requestExternalWatchAppConsent {
+                                    added = true
+                                    GlobalScope.launch {
+                                        val addResult = nativeLockerAddUtil.addAppToLocker(
+                                            commonAppStore,
+                                            commonAppStore.storeSource
+                                        )
+                                        logger.v { "Add to locker from watch onboarding ${commonAppStore.storeApp?.title} result=$addResult" }
+                                        if (!addResult) {
+                                            snackbarDisplay.showSnackbar("Failed to add app")
+                                            return@launch
+                                        }
+                                        libPebble.launchApp(
+                                            entry = entry,
+                                            snackbarDisplay = NoOpSnackbarDisplay,
+                                            connectedIdentifier = watch.identifier,
+                                        )
                                     }
-                                    libPebble.launchApp(
-                                        entry = entry,
-                                        snackbarDisplay = NoOpSnackbarDisplay,
-                                        connectedIdentifier = watch.identifier,
-                                    )
                                 }
                             },
                             primaryColor = true,

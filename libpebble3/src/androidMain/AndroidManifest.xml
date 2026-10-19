@@ -70,8 +70,10 @@
             </intent-filter>
         </service>
 
-        <service android:name="io.rebble.libpebblecommon.pebblekit.two.PebbleSenderReceiver"
-                 android:exported="true">
+        <service
+            android:name="io.rebble.libpebblecommon.pebblekit.two.PebbleSenderReceiver"
+            android:exported="true"
+            tools:ignore="Instantiatable">
             <intent-filter>
                 <action android:name="io.rebble.pebblekit2.SEND_DATA_TO_WATCH"/>
             </intent-filter>

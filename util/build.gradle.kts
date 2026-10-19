@@ -14,6 +14,8 @@ plugins {
     alias(libs.plugins.room)
 }
 
+val fdroidBuild = providers.gradleProperty("fdroidBuild").map(String::toBooleanStrict).orElse(false).get()
+
 room {
     schemaDirectory("schema")
 }
@@ -41,7 +43,7 @@ val requestedTaskNames = gradle.startParameter.taskNames.map { it.substringAfter
 val isTestLikeInvocation = requestedTaskNames.any { taskName ->
     taskName.contains("test") || taskName == "check"
 }
-val useKrispArtifact = enableKrisp && !(useKrispStubsForTests && isTestLikeInvocation)
+val useKrispArtifact = !fdroidBuild && enableKrisp && !(useKrispStubsForTests && isTestLikeInvocation)
 
 kotlin {
 
@@ -114,8 +116,12 @@ kotlin {
                 implementation(libs.serialization)
                 implementation(libs.koin.core)
                 implementation(libs.koin.compose)
-                implementation(libs.firebase.auth)
-                implementation(libs.firebase.firestore)
+                if (fdroidBuild) {
+                    implementation(project(":firebase-stubs"))
+                } else {
+                    implementation(libs.firebase.auth)
+                    implementation(libs.firebase.firestore)
+                }
                 implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.contentNegotiation)
                 implementation(libs.ktor.client.encoding)
@@ -124,7 +130,7 @@ kotlin {
                 implementation(libs.webview)
                 implementation(libs.uri)
                 implementation(compose.components.uiToolingPreview)
-                implementation(project(":cactus"))
+                implementation(project(if (fdroidBuild) ":cactus-stubs" else ":cactus"))
                 implementation(project(":libpebble3"))
                 implementation(project(":libindex"))
                 implementation(libs.kmpio)
@@ -146,15 +152,20 @@ kotlin {
         }
 
         androidMain {
+            if (fdroidBuild) {
+                kotlin.srcDir("src/androidFdroidMain/kotlin")
+            }
             dependencies {
-                // gitlive's compile variant declares com.google.firebase:* without versions.
-                implementation(project.dependencies.platform(libs.firebase.bom))
                 implementation(libs.androidx.activity.compose)
                 implementation(libs.ktor.client.okhttp)
                 implementation(compose.uiTooling)
-                implementation(libs.play.update)
-                implementation(libs.play.update.ktx)
-                implementation(libs.mixpanel.android)
+                if (!fdroidBuild) {
+                    // gitlive's compile variant declares com.google.firebase:* without versions.
+                    implementation(project.dependencies.platform(libs.firebase.bom))
+                    implementation(libs.play.update)
+                    implementation(libs.play.update.ktx)
+                    implementation(libs.mixpanel.android)
+                }
             }
         }
 
@@ -205,12 +216,23 @@ buildkonfig {
         buildConfigField(FieldSpec.Type.STRING, "KIRINKI_URL", gradleStringPropOrNull("kirinkiUrl"), nullable = true)
         buildConfigField(FieldSpec.Type.STRING, "MEMFAULT_TOKEN", gradleStringPropOrNull("memfaultToken"), nullable = true)
         buildConfigField(FieldSpec.Type.STRING, "GOOGLE_CLIENT_ID", gradleStringPropOrNull("googleClientId"), nullable = true)
-        buildConfigField(FieldSpec.Type.BOOLEAN, "GOOGLE_AUTH_ENABLED", gradleBooleanProp("googleAuthEnabled", default = true).toString())
-        buildConfigField(FieldSpec.Type.BOOLEAN, "APPLE_AUTH_ENABLED", gradleBooleanProp("appleAuthEnabled", default = true).toString())
-        buildConfigField(FieldSpec.Type.BOOLEAN, "GITHUB_AUTH_ENABLED", gradleBooleanProp("githubAuthEnabled", default = true).toString())
+        buildConfigField(FieldSpec.Type.BOOLEAN, "GOOGLE_AUTH_ENABLED", (!fdroidBuild && gradleBooleanProp("googleAuthEnabled", default = true)).toString())
+        buildConfigField(FieldSpec.Type.BOOLEAN, "APPLE_AUTH_ENABLED", (!fdroidBuild && gradleBooleanProp("appleAuthEnabled", default = true)).toString())
+        buildConfigField(FieldSpec.Type.BOOLEAN, "GITHUB_AUTH_ENABLED", (!fdroidBuild && gradleBooleanProp("githubAuthEnabled", default = true)).toString())
+        buildConfigField(FieldSpec.Type.BOOLEAN, "FDROID_BUILD", fdroidBuild.toString())
+        buildConfigField(FieldSpec.Type.BOOLEAN, "INDEX_HARDWARE_ENABLED", (!fdroidBuild).toString())
         buildConfigField(FieldSpec.Type.STRING, "CACTUS_PRO_KEY", gradleStringPropOrNull("cactusProKey"), nullable = true)
         buildConfigField(FieldSpec.Type.STRING, "CACTUS_STT_MODEL", providers.gradleProperty("cactusSttModel").get())
         buildConfigField(FieldSpec.Type.STRING, "CACTUS_LM_MODEL_NAME", "needle-pebble-ft")
         buildConfigField(FieldSpec.Type.STRING, "CACTUS_WEIGHTS_VERSION", providers.gradleProperty("cactusWeightsVersion").get())
+    }
+}
+
+if (fdroidBuild) {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        exclude(
+            "AppUpdate.android.kt",
+            "coredevices/analytics/Analytics.android.kt",
+        )
     }
 }

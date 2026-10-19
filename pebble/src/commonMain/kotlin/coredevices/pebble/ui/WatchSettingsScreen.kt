@@ -119,6 +119,8 @@ import coredevices.pebble.account.PebbleAccount
 import coredevices.pebble.health.HealthSyncTracker
 import coredevices.pebble.health.PlatformHealthSync
 import coredevices.pebble.rememberLibPebble
+import coredevices.pebble.services.AnalyticsHeartbeatQueue
+import coredevices.pebble.services.MemfaultChunkQueue
 import coredevices.pebble.ui.SettingsIds.EnableActivityInsights
 import coredevices.pebble.ui.SettingsIds.EnableHealthPlatformSync
 import coredevices.pebble.ui.SettingsIds.EnableHealthTracking
@@ -134,11 +136,14 @@ import coredevices.ui.M3Dialog
 import coredevices.ui.SignInDialog
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigHolder
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
 import coredevices.util.STTConfig
 import coredevices.util.WeatherUnit
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.emailOrNull
+import coredevices.util.thirdPartyDiagnosticsEnabledByDefault
 import coredevices.util.models.CactusSTTMode
 import coredevices.util.models.ModelDownloadStatus
 import coredevices.util.models.ModelInfo
@@ -447,9 +452,24 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
     val missingPermissions by permissionRequester.missingPermissions.collectAsState()
     val uiContext = rememberUiContext()
     val analyticsBackend: AnalyticsBackend = koinInject()
-    val enableFirebase = remember { mutableStateOf(settings.getBoolean(KEY_ENABLE_FIREBASE_UPLOADS, true)) }
-    val enableMemfault = remember { mutableStateOf(settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, true)) }
-    val enableMixpanel = remember { mutableStateOf(settings.getBoolean(KEY_ENABLE_MIXPANEL_UPLOADS, true)) }
+    val analyticsHeartbeatQueue: AnalyticsHeartbeatQueue = koinInject()
+    val memfaultChunkQueue: MemfaultChunkQueue = koinInject()
+    val diagnosticsEnabledByDefault = thirdPartyDiagnosticsEnabledByDefault()
+    val enableFirebase = remember {
+        mutableStateOf(
+            settings.getBoolean(KEY_ENABLE_FIREBASE_UPLOADS, diagnosticsEnabledByDefault)
+        )
+    }
+    val enableMemfault = remember {
+        mutableStateOf(
+            settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, diagnosticsEnabledByDefault)
+        )
+    }
+    val enableMixpanel = remember {
+        mutableStateOf(
+            settings.getBoolean(KEY_ENABLE_MIXPANEL_UPLOADS, diagnosticsEnabledByDefault)
+        )
+    }
     val enableExperimentalDevices: EnableExperimentalDevices = koinInject()
     val experimentalDevices by enableExperimentalDevices.enabled.collectAsState()
     val appUpdateTracker: AppUpdateTracker = koinInject()
@@ -608,6 +628,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     action = {
                         nav.navigateTo(CommonRoutes.ViewMyBugReportsRoute)
                     },
+                    show = { cloudAccountAuthEnabled() },
                 ) },
                 navBarNav?.let { nav -> basicSettingsActionItem(
                     title = "Configure Appstore Sources",
@@ -665,6 +686,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                             )
                         )
                     },
+                    show = { CommonBuildKonfig.INDEX_HARDWARE_ENABLED },
                 ),
                 basicSettingsToggleItem(
                     title = "Foreground Service",
@@ -1302,7 +1324,13 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                 ),
                 basicSettingsToggleItem(
                     title = "Enable Weather",
-                    description = "Fetch weather for the current location, for the Weather App (requires location permission)",
+                    description = if (CommonBuildKonfig.FDROID_BUILD) {
+                        "Send location coordinates to weather-api.repebble.com for forecasts. " +
+                            "Current Location requires location permission."
+                    } else {
+                        "Fetch weather for the current location, for the Weather App " +
+                            "(requires location permission)"
+                    },
                     topLevelType = TopLevelType.Phone,
                     section = Section.Weather,
                     checked = coreConfig.fetchWeather,
@@ -1610,7 +1638,8 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                 ),
                 basicSettingsToggleItem(
                     title = "Send app crashes",
-                    description = "This allows us to fix crashes in the mobile app - otherwise we don't know how often they are happening, or how to fix them",
+                    description = "This allows us to fix crashes in the mobile app - otherwise " +
+                        "we don't know how often they are happening, or how to fix them",
                     topLevelType = TopLevelType.Phone,
                     section = Section.Diagnostics,
                     checked = enableFirebase.value,
@@ -1622,24 +1651,35 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         }
                         Firebase.crashlytics.setCrashlyticsCollectionEnabled(it)
                     },
+                    show = { !CommonBuildKonfig.FDROID_BUILD },
                 ),
                 basicSettingsToggleItem(
                     title = "Send watch analytics",
-                    description = "Only for Core Devices watches. This allows us to measure metrics e.g. battery life, and debug watch crashes (otherwise we do not know whether they are regressions in reliability or performance)",
+                    description = if (CommonBuildKonfig.FDROID_BUILD) {
+                        "Send battery, performance, and crash diagnostics for Core Devices " +
+                            "watches to Core Devices."
+                    } else {
+                        "Only for Core Devices watches. This allows us to measure metrics e.g. " +
+                            "battery life, and debug watch crashes (otherwise we do not know " +
+                            "whether they are regressions in reliability or performance)"
+                    },
                     topLevelType = TopLevelType.Phone,
                     section = Section.Diagnostics,
                     checked = enableMemfault.value,
                     onCheckChanged = {
                         enableMemfault.value = it
+                        settings.set(KEY_ENABLE_MEMFAULT_UPLOADS, it)
                         if (!it) {
                             coreAnalytics.logEvent("memfault_collection_disabled")
+                            analyticsHeartbeatQueue.discardPending()
+                            memfaultChunkQueue.discardPending()
                         }
-                        settings.set(KEY_ENABLE_MEMFAULT_UPLOADS, it)
                     },
                 ),
                 basicSettingsToggleItem(
                     title = "Send app analytics",
-                    description = "This allows us to track metrics e.g. connectivity, so that we can track different types of error and improve reliability",
+                    description = "This allows us to track metrics e.g. connectivity, so that " +
+                        "we can track different types of error and improve reliability",
                     topLevelType = TopLevelType.Phone,
                     section = Section.Diagnostics,
                     checked = enableMixpanel.value,
@@ -1651,6 +1691,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                         }
                         analyticsBackend.setEnabled(it)
                     },
+                    show = { !CommonBuildKonfig.FDROID_BUILD },
                 ),
                 basicSettingsToggleItem(
                     title = "Show notifications in phone logs",
@@ -1908,7 +1949,7 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     topLevelType = TopLevelType.Phone,
                     section = Section.General,
                     action = { showSignInDialog = true },
-                    show = { coreUser == null },
+                    show = { coreUser == null && cloudAccountAuthEnabled() },
                 ),
                 basicSettingsActionItem(
                     title = "Sign Out - Rebble",
@@ -1954,7 +1995,9 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                     action = {
                         navBarNav.navigateTo(CommonRoutes.RingOnboardingRoute)
                     },
-                    show = { debugOptionsEnabled },
+                    show = {
+                        debugOptionsEnabled && CommonBuildKonfig.INDEX_HARDWARE_ENABLED
+                    },
                 ) },
                 basicSettingsToggleItem(
                     title = "Emulate Timeline Webservice",
@@ -1974,7 +2017,14 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
                 ),
                 basicSettingsToggleItem(
                     title = "Use Pebble Weather Service when apps are broken",
-                    description = "If old apps are using a broken weather API, attempt to use the Pebble Weather Service instead (will only work for some apps which use OpenWeather API)",
+                    description = if (CommonBuildKonfig.FDROID_BUILD) {
+                        "Opt in to proxy weather requests from watch apps. Coordinates may be " +
+                            "sent to weather-api.repebble.com or api.openweathermap.org."
+                    } else {
+                        "If old apps are using a broken weather API, attempt to use the Pebble " +
+                            "Weather Service instead (will only work for some apps which use " +
+                            "OpenWeather API)"
+                    },
                     topLevelType = TopLevelType.Phone,
                     section = Section.Apps,
                     checked = coreConfig.interceptPKJSWeather,

@@ -40,4 +40,10 @@ class CoreConfigTest {
             assertEquals(true, encoded.contains("\"mode\""))
         }
     }
+
+    @Test
+    fun weatherIsOptInForFdroidBuilds() {
+        assertEquals(!CommonBuildKonfig.FDROID_BUILD, CoreConfig().fetchWeather)
+        assertEquals(!CommonBuildKonfig.FDROID_BUILD, CoreConfig().interceptPKJSWeather)
+    }
 }

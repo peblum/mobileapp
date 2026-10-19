@@ -92,6 +92,7 @@ import coredevices.ui.PebbleElevatedButton
 import coredevices.ui.SignInDialog
 import coredevices.util.CoreConfigFlow
 import coredevices.util.Platform
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.emailOrNull
 import coredevices.util.isIOS
 import dev.gitlive.firebase.Firebase
@@ -179,6 +180,7 @@ fun BugReportScreen(
 
         val keyboardController = LocalSoftwareKeyboardController.current
         val canSendReports = bugReportProcessor.canSendReports()
+        val cloudAuthEnabled = cloudAccountAuthEnabled()
         val platformShareLauncher: PlatformShareLauncher = koinInject()
         val snackbarHostState = remember { SnackbarHostState() }
         var showSignInDialog by remember { mutableStateOf(false) }
@@ -298,7 +300,7 @@ fun BugReportScreen(
             imageAttachmentScreenLauncher?.invoke()
         }
 
-        if (showSignInDialog) {
+        if (showSignInDialog && cloudAuthEnabled) {
             SignInDialog(
                 onDismiss = { showSignInDialog = false }
             )
@@ -349,42 +351,45 @@ fun BugReportScreen(
                             setImageAttachments = setImageAttachments
                         )
                         Spacer(Modifier.weight(1.0f))
-                        Button(
-                            enabled = !sending && !showSuccess && !screenshotLoading && user != null && canSendReports,
-                            onClick = {
-                                keyboardController?.hide()
-                                sendLogs(shareLocally = false)
-                            },
-                            contentPadding = ButtonDefaults.ButtonWithIconContentPadding
-                        ) {
-                            when {
-                                sending -> {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                        strokeWidth = 2.dp
-                                    )
-                                }
+                        if (cloudAuthEnabled) {
+                            Button(
+                                enabled = !sending && !showSuccess && !screenshotLoading &&
+                                    user != null && canSendReports,
+                                onClick = {
+                                    keyboardController?.hide()
+                                    sendLogs(shareLocally = false)
+                                },
+                                contentPadding = ButtonDefaults.ButtonWithIconContentPadding
+                            ) {
+                                when {
+                                    sending -> {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
 
-                                showSuccess -> {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        "Success",
-                                        modifier = Modifier.size(ButtonDefaults.IconSize),
-                                        tint = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                                    Text("Report Sent!")
-                                }
+                                    showSuccess -> {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            "Success",
+                                            modifier = Modifier.size(ButtonDefaults.IconSize),
+                                            tint = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                                        Text("Report Sent!")
+                                    }
 
-                                else -> {
-                                    Text("Send Report")
-                                    Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-                                    Icon(
-                                        Icons.Default.ChevronRight,
-                                        "Send",
-                                        modifier = Modifier.size(ButtonDefaults.IconSize)
-                                    )
+                                    else -> {
+                                        Text("Send Report")
+                                        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                                        Icon(
+                                            Icons.Default.ChevronRight,
+                                            "Send",
+                                            modifier = Modifier.size(ButtonDefaults.IconSize)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -431,16 +436,27 @@ fun BugReportScreen(
                 }
                 if (user == null) {
                     Text(
-                        "You must sign in to submit a bug report",
+                        if (cloudAuthEnabled) {
+                            "You must sign in to submit a bug report"
+                        } else {
+                            "Direct submission is unavailable in this build. Use Share to " +
+                                "create a local bug-report archive."
+                        },
                         textAlign = TextAlign.Center,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(4.dp),
-                        color = MaterialTheme.colorScheme.error
+                        color = if (cloudAuthEnabled) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
                     )
-                    Button(
-                        onClick = { showSignInDialog = true },
-                    ) {
-                        Text("Sign In")
+                    if (cloudAuthEnabled) {
+                        Button(
+                            onClick = { showSignInDialog = true },
+                        ) {
+                            Text("Sign In")
+                        }
                     }
                     Spacer(Modifier.height(8.dp))
                 }
@@ -572,38 +588,46 @@ fun BugReportScreen(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Please note that logs + device info will be sent with this report",
+                    if (cloudAuthEnabled) {
+                        "Please note that logs + device info will be sent with this report"
+                    } else {
+                        "The shared archive contains logs and device information. Review it " +
+                            "before sending it to anyone."
+                    },
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(8.dp),
                     fontSize = 12.sp
                 )
-                Spacer(Modifier.height(20.dp))
-                ElevatedCard(
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 6.dp
-                    ),
-                    modifier = Modifier.padding(15.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.fillMaxWidth(),
+                if (cloudAuthEnabled) {
+                    Spacer(Modifier.height(20.dp))
+                    ElevatedCard(
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = 6.dp
+                        ),
+                        modifier = Modifier.padding(15.dp)
                     ) {
-                        Text(
-                            text = "You can follow up on an existing bug report by adding more logs or information:",
-                            textAlign = TextAlign.Center,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(6.dp),
-                        )
-                        Button(
-                            onClick = {
-                                coreNav.navigateTo(CommonRoutes.ViewMyBugReportsRoute)
-                            },
-                            modifier = Modifier.padding(8.dp),
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(
-                                text = "My Bug Reports",
-                                fontSize = 14.sp,
+                                text = "You can follow up on an existing bug report by adding " +
+                                    "more logs or information:",
+                                textAlign = TextAlign.Center,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(6.dp),
                             )
+                            Button(
+                                onClick = {
+                                    coreNav.navigateTo(CommonRoutes.ViewMyBugReportsRoute)
+                                },
+                                modifier = Modifier.padding(8.dp),
+                            ) {
+                                Text(
+                                    text = "My Bug Reports",
+                                    fontSize = 14.sp,
+                                )
+                            }
                         }
                     }
                 }

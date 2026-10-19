@@ -11,6 +11,7 @@ import coredevices.libindex.device.DiscoveredIndexDevice
 import coredevices.ring.database.Preferences
 import coredevices.util.AndroidCompanionDevice
 import coredevices.util.CoreConfigFlow
+import coredevices.util.CommonBuildKonfig
 import io.rebble.libpebblecommon.connection.ActiveDevice
 import io.rebble.libpebblecommon.connection.LibPebble
 import kotlinx.coroutines.GlobalScope
@@ -24,12 +25,15 @@ import kotlinx.coroutines.flow.onEach
 
 class PebbleBackgroundManager(
     private val context: Context,
-    private val commonPrefs: Preferences,
+    commonPrefsProvider: Lazy<Preferences>,
     private val coreConfigFlow: CoreConfigFlow,
     private val libPebble: LibPebble,
-    private val libIndex: LibIndex,
+    libIndexProvider: Lazy<LibIndex>,
     private val androidCompanionDevice: AndroidCompanionDevice
 ) {
+    private val commonPrefs by commonPrefsProvider
+    private val libIndex by libIndexProvider
+
     companion object {
         private val logger = Logger.withTag("PebbleBackgroundManager")
     }
@@ -43,7 +47,7 @@ class PebbleBackgroundManager(
         } catch (e: Exception) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && e is ForegroundServiceStartNotAllowedException) {
                 logger.w(e) { "Cannot start PebbleService from background (no CDM exemption?)" }
-                if (coreConfigFlow.value.enableIndex) {
+                if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED && coreConfigFlow.value.enableIndex) {
                     if (!androidCompanionDevice.cdmPreviouslyCrashed()) {
                         libIndex.warnIfNoCompanionAssociations()
                     } else {
@@ -74,25 +78,39 @@ class PebbleBackgroundManager(
     }
 
     fun monitorToStartBackground() {
-        var holdIndexEnabled = false
-        combine(
-            commonPrefs.ringPaired,
-            libIndex.rings,
-            coreConfigFlow.flow,
-            libPebble.bluetoothEnabled,
-            libPebble.watches,
-        ) { ringPaired, rings, config, btState, watches ->
-            val ringRecover = rings.any { it is DiscoveredIndexDevice && it.isFailsafe }
-            if (ringRecover) {
-                holdIndexEnabled = true
+        val shouldRunFlow = if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+            var holdIndexEnabled = false
+            combine(
+                commonPrefs.ringPaired,
+                libIndex.rings,
+                coreConfigFlow.flow,
+                libPebble.bluetoothEnabled,
+                libPebble.watches,
+            ) { ringPaired, rings, config, btState, watches ->
+                val ringRecover = rings.any { it is DiscoveredIndexDevice && it.isFailsafe }
+                if (ringRecover) {
+                    holdIndexEnabled = true
+                }
+                val ringActive = (ringPaired != null || ringRecover || holdIndexEnabled) &&
+                    btState.enabled()
+                val watchKeepAlive = config.androidForegroundServiceForWatchConnectionV2 &&
+                    btState.enabled() &&
+                    watches.any { it is ActiveDevice }
+                ringActive || watchKeepAlive
             }
-            val ringActive = (ringPaired != null || ringRecover || holdIndexEnabled) && btState.enabled()
-            val watchKeepAlive = config.androidForegroundServiceForWatchConnectionV2 &&
-                btState.enabled() &&
-                watches.any { it is ActiveDevice }
-            ringActive || watchKeepAlive
+        } else {
+            combine(
+                coreConfigFlow.flow,
+                libPebble.bluetoothEnabled,
+                libPebble.watches,
+            ) { config, btState, watches ->
+                config.androidForegroundServiceForWatchConnectionV2 &&
+                    btState.enabled() &&
+                    watches.any { it is ActiveDevice }
+            }
         }
-            .distinctUntilChanged()
+
+        shouldRunFlow.distinctUntilChanged()
             .onEach { shouldRun ->
                 logger.d { "shouldRun=$shouldRun isRunning=${isRunning.value}" }
                 shouldBeRunning = shouldRun

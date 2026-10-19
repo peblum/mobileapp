@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import coredevices.coreapp.api.AtlasTicketDetails
 import coredevices.coreapp.api.BugReports
 import coredevices.ui.SignInButtons
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.emailOrNull
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.auth.auth
@@ -54,6 +55,7 @@ fun BugReportsListScreen(
 ) {
     Box(modifier = Modifier.background(MaterialTheme.colorScheme.background)) {
         val scope = rememberCoroutineScope()
+        val cloudAuthEnabled = cloudAccountAuthEnabled()
         val bugReports: BugReports = koinInject()
         val tickets by bugReports.ticketDetails.collectAsState()
         val ticketDetails = tickets?.ticketDetails
@@ -78,7 +80,10 @@ fun BugReportsListScreen(
         // Load bug reports when screen first appears or user changes
         LaunchedEffect(user) {
             // Clear data immediately when user changes (including sign out)
-            if (user == null) {
+            if (!cloudAuthEnabled) {
+                error = "Cloud bug-report history is unavailable in this build"
+                loading = false
+            } else if (user == null) {
                 error = "Please sign in to view your bug reports"
                 loading = false
             } else {
@@ -99,11 +104,13 @@ fun BugReportsListScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { loadBugReports() }) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "Refresh"
-                            )
+                        if (cloudAuthEnabled) {
+                            IconButton(onClick = { loadBugReports() }) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh"
+                                )
+                            }
                         }
                     }
                 )
@@ -138,7 +145,7 @@ fun BugReportsListScreen(
                                 Spacer(modifier = Modifier.height(16.dp))
 
                                 // Show sign in buttons if user is not authenticated
-                                if (user == null) {
+                                if (user == null && cloudAuthEnabled) {
                                     SignInButtons(
                                         onDismiss = {},
                                         primaryColor = true,
@@ -244,5 +251,4 @@ private fun TicketListItem(
         }
     )
 }
-
 

@@ -1,5 +1,45 @@
-Pebble is the official Android app for managing your Pebble and Core Devices smartwatch. Pair your watch, customize your settings, and discover a growing ecosystem of watchfaces, apps, and tools designed for your watch.
+The Pebble app is a free and open-source Android companion for Pebble and
+compatible Core Devices smartwatches. Its core Bluetooth features work without
+an account or network service.
 
 Features include:
-- Bluetooth pairing and reconnection
-- Watchface and app gallery browsing
+
+* Bluetooth pairing, reconnection, and watch management
+* Phone notifications, calls, contacts, and calendar integration
+* Local watch settings, health data, screenshots, logs, and developer tools
+* Optional watchface and watch-app browsing and installation
+* Optional weather, language-pack, voice, and firmware services
+
+Network and external software
+
+Weather is off by default. Enabling it sends coordinates for configured
+locations to weather-api.repebble.com; using Current Location also requires the
+Android location permission. The separate legacy watch-app weather proxy is
+also off by default; enabling it may send coordinates to
+weather-api.repebble.com or api.openweathermap.org.
+
+The optional app catalog, firmware, language packs, voice features, and web
+proxies use third-party Core/Rebble or community services. Software installed
+on a watch is not built or reviewed by F-Droid and may have a different
+license. The app asks before downloading third-party watch apps or firmware
+and explains that they bypass F-Droid's checks. Broad external file/content
+package handlers are disabled in this build.
+
+F-Droid build
+
+This build excludes Firebase and Google sign-in, Crashlytics, Mixpanel, Google
+Play updates, Health Connect, proprietary Index/Haversine support, Krisp, and
+Cactus native speech models. Weather and optional watch-diagnostic uploads
+default off, and firmware checks require an informed user action. Index 01 ring
+features and cloud-backed account synchronization are unavailable.
+
+Permissions
+
+Bluetooth and nearby-device permissions connect to watches. Optional features
+may request notification-listener, contacts, calendar, phone/call-log, or
+location access; they can be left disabled when those integrations are not
+wanted.
+
+Another Pebble companion app may conflict with this app's Bluetooth and
+PebbleKit compatibility services. Disable or uninstall the other companion if
+connections are unreliable.

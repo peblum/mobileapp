@@ -152,10 +152,12 @@ import coredevices.ui.PebbleElevatedButton
 import coredevices.util.CompanionDevice
 import coredevices.util.CoreConfig
 import coredevices.util.CoreConfigFlow
+import coredevices.util.CommonBuildKonfig
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
 import coredevices.util.PermissionResult
 import coredevices.util.Platform
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.isIOS
 import coredevices.util.rememberUiContext
 import io.rebble.libpebblecommon.connection.ActiveDevice
@@ -167,6 +169,7 @@ import io.rebble.libpebblecommon.connection.ConnectedPebbleDevice
 import io.rebble.libpebblecommon.connection.ConnectedPebbleDeviceInRecovery
 import io.rebble.libpebblecommon.connection.ConnectingPebbleDevice
 import io.rebble.libpebblecommon.connection.ConnectionFailureReason
+import io.rebble.libpebblecommon.connection.ConnectedWatchInfo
 import io.rebble.libpebblecommon.connection.DisconnectingPebbleDevice
 import io.rebble.libpebblecommon.connection.DiscoveredPebbleDevice
 import io.rebble.libpebblecommon.connection.FirmwareUpdateCheckResult
@@ -179,6 +182,7 @@ import io.rebble.libpebblecommon.connection.endpointmanager.FirmwareUpdateErrorS
 import io.rebble.libpebblecommon.connection.endpointmanager.FirmwareUpdater
 import io.rebble.libpebblecommon.connection.endpointmanager.LanguagePackInstallState
 import io.rebble.libpebblecommon.database.entity.buildTimelineNotification
+import io.rebble.libpebblecommon.metadata.WatchHardwarePlatform
 import io.rebble.libpebblecommon.packets.blobdb.TimelineIcon
 import io.rebble.libpebblecommon.packets.blobdb.TimelineItem
 import io.rebble.libpebblecommon.services.blobdb.TimelineActionResult
@@ -234,7 +238,8 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
         when {
             scanningBle -> ScanningStatus.ScanningWatchBle
             scanningClassic -> ScanningStatus.ScanningWatchClassic
-            scanningIndex -> ScanningStatus.ScanningRing
+            CommonBuildKonfig.INDEX_HARDWARE_ENABLED && scanningIndex ->
+                ScanningStatus.ScanningRing
             else -> ScanningStatus.NotScanning
         }
     }.collectAsState(ScanningStatus.NotScanning)
@@ -266,6 +271,7 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
     }
 
     LaunchedEffect(requestIndexCompanion) {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return@LaunchedEffect
         if (!requestIndexCompanion) return@LaunchedEffect
         val pairedRing = libIndex.rings.value.firstOrNull { it is KnownIndexDevice }
         if (screenUiContext != null && pairedRing != null) {
@@ -353,26 +359,28 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
                             )
                         },
                     )
-                    FloatingActionButtonMenuItem(
-                        onClick = {
-                            addFabExpanded = false
-                            uiContext?.let { ctx ->
-                                scope.launch {
-                                    // Ask for the scan permission before trusting the paired
-                                    // state: reconciling it against the platform bond list
-                                    // needs that permission.
-                                    if (!ensureScanPermission(ctx)) return@launch
-                                    if (libIndex.rings.value.any { it !is DiscoveredIndexDevice }) {
-                                        showIndexAlreadyPairedDialog = true
-                                    } else {
-                                        libIndex.startScan()
+                    if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) {
+                        FloatingActionButtonMenuItem(
+                            onClick = {
+                                addFabExpanded = false
+                                uiContext?.let { ctx ->
+                                    scope.launch {
+                                        // Ask for the scan permission before trusting the paired
+                                        // state: reconciling it against the platform bond list
+                                        // needs that permission.
+                                        if (!ensureScanPermission(ctx)) return@launch
+                                        if (libIndex.rings.value.any { it !is DiscoveredIndexDevice }) {
+                                            showIndexAlreadyPairedDialog = true
+                                        } else {
+                                            libIndex.startScan()
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        icon = { Icon(Icons.Default.RadioButtonUnchecked, contentDescription = "Scan") },
-                        text = { Text("Add Index 01") },
-                    )
+                            },
+                            icon = { Icon(Icons.Default.RadioButtonUnchecked, contentDescription = "Scan") },
+                            text = { Text("Add Index 01") },
+                        )
+                    }
                     if (pebbleFeatures.supportsBtClassic()) {
                         FloatingActionButtonMenuItem(
                             onClick = {
@@ -441,7 +449,10 @@ fun WatchesScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
             val rings by libIndex.rings.collectAsState()
             val entriesFlow = remember {
                 combine(watchesFlow, libIndex.rings) { sortedWatches, rings ->
-                    rings.map { DeviceListEntry.Ring(it) } +
+                    rings
+                        .takeIf { CommonBuildKonfig.INDEX_HARDWARE_ENABLED }
+                        .orEmpty()
+                        .map { DeviceListEntry.Ring(it) } +
                     sortedWatches.map { DeviceListEntry.Watch(it) }
                 }
             }
@@ -1231,6 +1242,14 @@ fun WatchMenu(watch: PebbleDevice, navBarNav: NavBarNav) {
     val showConfirmResetIntoPrfDialog = remember { mutableStateOf(false) }
     val showConfirmFactoryResetDialog = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val firmwareUpdatePlatform =
+        (watch as? ConnectedWatchInfo)?.watchInfo?.platform
+            ?: WatchHardwarePlatform.UNKNOWN
+    val requestFirmwareUpdateCheckConsent =
+        rememberFirmwareUpdateCheckConsentRequester(
+            platform = firmwareUpdatePlatform,
+            requestKey = watch.identifier to (watch is ConnectedPebble.Firmware),
+        )
 
     Box {
         IconButton(onClick = { showMenu = !showMenu }) {
@@ -1298,7 +1317,10 @@ fun WatchMenu(watch: PebbleDevice, navBarNav: NavBarNav) {
                             Icon(Icons.Outlined.Autorenew, contentDescription = null)
                         },
                         onClick = {
-                            watch.checkforFirmwareUpdate(true)
+                            showMenu = false
+                            requestFirmwareUpdateCheckConsent {
+                                watch.checkforFirmwareUpdate(true)
+                            }
                         }
                     )
                 }
@@ -1341,7 +1363,7 @@ fun WatchMenu(watch: PebbleDevice, navBarNav: NavBarNav) {
                     }
                 )
 
-                if (watch.watchInfo.platform.isCoreDevice()) {
+                if (watch.watchInfo.platform.isCoreDevice() && cloudAccountAuthEnabled()) {
                     DropdownMenuItem(
                         text = { Text("Battery Life") },
                         leadingIcon = {
@@ -1795,6 +1817,14 @@ fun LanguageDialog(watch: ConnectedPebbleDevice, onDismissRequest: () -> Unit) {
         title = { Text("Language Packs") },
         text = {
             LazyColumn {
+                fdroidLanguagePackDownloadWarning()?.let { warning ->
+                    item {
+                        Text(
+                            text = warning,
+                            modifier = Modifier.padding(bottom = 12.dp),
+                        )
+                    }
+                }
                 items(languagePacks, key = { it.id }) { lp ->
                     val isSelected = selectedLanguagePack == lp
                     Text(
@@ -2064,6 +2094,10 @@ fun WatchDetails(
                 title = { Text("Install PebbleOS ${firmwareUpdateAvailable.version.stringVersion}") },
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
+                        fdroidFirmwareDownloadWarning()?.let { warning ->
+                            Text(warning)
+                            Spacer(Modifier.height(12.dp))
+                        }
                         Text(firmwareUpdateAvailable.notes)
                     }
                 },
@@ -2071,7 +2105,15 @@ fun WatchDetails(
                     TextButton(onClick = {
                         showFirmwareUpdateConfirmDialog = false
                         firmwareUpdater.updateFirmware(firmwareUpdateAvailable)
-                    }) { Text("Install") }
+                    }) {
+                        Text(
+                            if (CommonBuildKonfig.FDROID_BUILD) {
+                                "Download and install"
+                            } else {
+                                "Install"
+                            }
+                        )
+                    }
                 },
                 dismissButton = { TextButton(onClick = { showFirmwareUpdateConfirmDialog = false }) { Text("Cancel") } }
             )

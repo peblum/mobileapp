@@ -1,0 +1,2 @@
+# Unified patches require a marker on otherwise blank context lines.
+docs/fdroid-scanner.patch whitespace=-blank-at-eol,-blank-at-eof

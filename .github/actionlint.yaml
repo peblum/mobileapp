@@ -1,0 +1,13 @@
+self-hosted-runner:
+  labels:
+    - native
+    - android-untrusted
+    - android-publish
+
+paths:
+  .forgejo/workflows/**/*.{yml,yaml}:
+    ignore:
+      # Forgejo supports fully qualified action URLs and pins them by commit.
+      - 'specifying action "https://data[.]forgejo[.]org/.+" in invalid format'
+      # This is Forgejo's job-scoped OIDC switch.
+      - 'unexpected key "enable-openid-connect" for "job" section'

@@ -110,6 +110,8 @@ fun DebugFirmwareSideload(watchIdentifier: String, coreNav: CoreNav) {
         val snackbarHostState = remember { SnackbarHostState() }
         logger.d("watch = $watch")
         val availableUpdate = (watch as? ConnectedPebble.Firmware)?.firmwareUpdateAvailable?.result
+        val requestFirmwareDownloadConsent =
+            rememberFirmwareDownloadConsentRequester(requestKey = availableUpdate)
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -220,10 +222,14 @@ fun DebugFirmwareSideload(watchIdentifier: String, coreNav: CoreNav) {
                             Button(
                                 onClick = {
                                     if (availableUpdate is FirmwareUpdateCheckResult.FoundUpdate) {
-                                        setUpdateState(UiFirmwareUpdateStatus.Starting)
-                                        doFirmwareUpdate {
-                                            logger.d { "doFirmwareUpdate: $availableUpdate" }
-                                            updateFirmware(availableUpdate)
+                                        requestFirmwareDownloadConsent {
+                                            setUpdateState(UiFirmwareUpdateStatus.Starting)
+                                            doFirmwareUpdate {
+                                                logger.d {
+                                                    "doFirmwareUpdate: $availableUpdate"
+                                                }
+                                                updateFirmware(availableUpdate)
+                                            }
                                         }
                                     } else {
                                         logger.d { "availableUpdate is null" }

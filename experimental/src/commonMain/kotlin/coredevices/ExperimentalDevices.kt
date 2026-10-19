@@ -35,6 +35,7 @@ import coredevices.ring.ui.screens.home.FeedTabContents
 import coredevices.ring.ui.screens.home.IndexFeedScreen
 import coredevices.util.Permission
 import coredevices.util.PermissionRequester
+import coredevices.util.CommonBuildKonfig
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.auth.auth
 import dev.gitlive.firebase.auth.FirebaseUser
@@ -60,25 +61,39 @@ import size
 import kotlin.time.Clock
 
 class ExperimentalDevices(
-    private val ringSync: RingSync,
-    private val recordingStorage: RecordingStorage,
-    private val ringDelegate: RingDelegate,
-    private val sandboxRepository: McpSandboxRepository,
-    private val recordingRepository: RecordingRepository,
-    private val conversationMessageDao: ConversationMessageDao,
-    private val preferences: Preferences,
-    private val shortcutActionHandler: ShortcutActionHandler,
-    private val libIndex: LibIndex,
-    private val permissionRequester: PermissionRequester,
+    ringSyncProvider: Lazy<RingSync>,
+    recordingStorageProvider: Lazy<RecordingStorage>,
+    ringDelegateProvider: Lazy<RingDelegate>,
+    sandboxRepositoryProvider: Lazy<McpSandboxRepository>,
+    recordingRepositoryProvider: Lazy<RecordingRepository>,
+    conversationMessageDaoProvider: Lazy<ConversationMessageDao>,
+    preferencesProvider: Lazy<Preferences>,
+    shortcutActionHandlerProvider: Lazy<ShortcutActionHandler>,
+    libIndexProvider: Lazy<LibIndex>,
+    permissionRequesterProvider: Lazy<PermissionRequester>,
     /** Touched here so Koin instantiates the singleton at app start;
      *  the syncer's init block attaches its observers immediately and
      *  runs for the rest of the process lifetime (mirrors how
      *  RecordingProcessingQueue's recording observer kicks off). */
-    private val indexFeedSyncService: coredevices.ring.service.indexfeed.IndexFeedSyncService,
-    private val defaultListsBootstrap: coredevices.ring.service.indexfeed.DefaultListsBootstrap,
+    indexFeedSyncServiceProvider: Lazy<coredevices.ring.service.indexfeed.IndexFeedSyncService>,
+    defaultListsBootstrapProvider: Lazy<coredevices.ring.service.indexfeed.DefaultListsBootstrap>,
 ) {
+    private val ringSync by ringSyncProvider
+    private val recordingStorage by recordingStorageProvider
+    private val ringDelegate by ringDelegateProvider
+    private val sandboxRepository by sandboxRepositoryProvider
+    private val recordingRepository by recordingRepositoryProvider
+    private val conversationMessageDao by conversationMessageDaoProvider
+    private val preferences by preferencesProvider
+    private val shortcutActionHandler by shortcutActionHandlerProvider
+    private val libIndex by libIndexProvider
+    private val permissionRequester by permissionRequesterProvider
+    private val indexFeedSyncService by indexFeedSyncServiceProvider
+    private val defaultListsBootstrap by defaultListsBootstrapProvider
     private val scope = CoroutineScope(Dispatchers.Default)
+
     fun appInit() {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return
         libIndex.init(
             permissionRequester.missingPermissions.distinctUntilChanged { old, new ->
                 (Permission.Bluetooth in old && Permission.Bluetooth !in new) || (Permission.Bluetooth !in old && Permission.Bluetooth in new)
@@ -110,6 +125,7 @@ class ExperimentalDevices(
     }
 
     suspend fun init() {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return
         withContext(Dispatchers.IO) {
             sandboxRepository.seedDatabase()
         }
@@ -124,21 +140,26 @@ class ExperimentalDevices(
     }
 
     fun onBackgroundSync() {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return
         ringDelegate.onBackgroundSync()
     }
 
     fun handleDeepLink(uri: Uri): Boolean {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return false
         return shortcutActionHandler.handleDeepLink(uri)
     }
 
     fun addExperimentalRoutes(builder: NavGraphBuilder, coreNav: CoreNav) {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return
         builder.addRingRoutes(coreNav)
     }
 
-    fun badCollectionsDir(): Path? = RingSync.badCollectionsDir
+    fun badCollectionsDir(): Path? =
+        if (CommonBuildKonfig.INDEX_HARDWARE_ENABLED) RingSync.badCollectionsDir else null
 
     @Composable
     fun IndexScreen(coreNav: CoreNav, topBarParams: TopBarParams) {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return
         val recordingQueue = koinInject<RecordingProcessingQueue>()
         val recordingRepo = koinInject<RecordingRepository>()
         val recordingStorage = koinInject<RecordingStorage>()
@@ -208,6 +229,7 @@ class ExperimentalDevices(
     }
 
     suspend fun exportOutput(id: String): List<DocumentAttachment> {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return emptyList()
         val logger = co.touchlab.kermit.Logger.withTag("ExperimentalDevices")
         val attachments = mutableListOf<DocumentAttachment>()
         // Export both the processed audio and the original raw capture for the
@@ -240,6 +262,7 @@ class ExperimentalDevices(
      * best-effort — an un-uploaded or missing file is skipped, not fatal.
      */
     suspend fun exportRecentRecordings(limit: Int = 10): List<DocumentAttachment> = withContext(Dispatchers.IO) {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return@withContext emptyList()
         val logger = co.touchlab.kermit.Logger.withTag("ExperimentalDevices")
         val recordings = recordingRepository.getRecentRecordings(limit)
         if (recordings.isEmpty()) return@withContext emptyList()
@@ -287,7 +310,8 @@ class ExperimentalDevices(
         attachments
     }
 
-    fun debugSummary(): String {
+    fun debugSummary(): String? {
+        if (!CommonBuildKonfig.INDEX_HARDWARE_ENABLED) return null
         return buildString {
             ringSync.lastRingSummary()?.let {
                 append(it)

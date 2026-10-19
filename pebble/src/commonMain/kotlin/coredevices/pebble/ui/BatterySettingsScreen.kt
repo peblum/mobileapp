@@ -35,7 +35,9 @@ import coredevices.ui.PebbleWebview
 import coredevices.ui.PebbleWebviewNavigator
 import coredevices.ui.PebbleWebviewUrlInterceptor
 import coredevices.ui.SignInDialog
+import coredevices.util.cloudAccountAuthEnabled
 import coredevices.util.emailOrNull
+import coredevices.util.thirdPartyDiagnosticsEnabledByDefault
 import dev.gitlive.firebase.Firebase
 import dev.gitlive.firebase.auth.auth
 import io.ktor.http.encodeURLParameter
@@ -47,9 +49,13 @@ private const val MOBILE_BATTERY_PATH = "/m/battery"
 
 @Composable
 fun BatterySettingsScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
+    val cloudAuthEnabled = cloudAccountAuthEnabled()
     val apiConfig = koinInject<CommonApiConfig>()
     val settings = koinInject<Settings>()
-    val analyticsEnabled = settings.getBoolean(KEY_ENABLE_MEMFAULT_UPLOADS, true)
+    val analyticsEnabled = settings.getBoolean(
+        KEY_ENABLE_MEMFAULT_UPLOADS,
+        thirdPartyDiagnosticsEnabledByDefault(),
+    )
     val accountEmail by Firebase.auth.idTokenChanged
         .map { it?.emailOrNull }
         .distinctUntilChanged()
@@ -62,6 +68,14 @@ fun BatterySettingsScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
     LaunchedEffect(Unit) {
         topBarParams.searchAvailable(null)
         topBarParams.title("Battery")
+    }
+
+    if (!cloudAuthEnabled) {
+        BatteryUnavailableContent()
+        LaunchedEffect(Unit) {
+            topBarParams.actions { }
+        }
+        return
     }
 
     LaunchedEffect(accountEmail) {
@@ -182,6 +196,24 @@ fun BatterySettingsScreen(navBarNav: NavBarNav, topBarParams: TopBarParams) {
             interceptor = interceptor,
             modifier = Modifier.fillMaxSize(),
             onPageError = { pageError = it },
+        )
+    }
+}
+
+@Composable
+private fun BatteryUnavailableContent() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "Battery analytics require the cloud account service, which is unavailable " +
+                "in this build.",
+            modifier = Modifier.padding(24.dp),
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
         )
     }
 }
