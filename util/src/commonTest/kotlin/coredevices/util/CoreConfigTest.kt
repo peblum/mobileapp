@@ -36,4 +36,12 @@ class CoreConfigTest {
             assertEquals(true, encoded.contains("\"mode\""))
         }
     }
+
+    @Test
+    fun englishUsesTheEnglishModelAndEverythingElseTheMultilingualOne() {
+        assertEquals(CommonBuildKonfig.CACTUS_STT_MODEL_ENG, STTConfig(spokenLanguage = "en").localModel)
+        assertEquals(CommonBuildKonfig.CACTUS_STT_MODEL, STTConfig(spokenLanguage = "fr").localModel)
+        assertEquals(CommonBuildKonfig.CACTUS_STT_MODEL, STTConfig(spokenLanguage = null).localModel)
+        assertEquals(CommonBuildKonfig.CACTUS_STT_MODEL, STTConfig(modelName = CommonBuildKonfig.CACTUS_STT_MODEL, spokenLanguage = "en").localModel)
+    }
 }

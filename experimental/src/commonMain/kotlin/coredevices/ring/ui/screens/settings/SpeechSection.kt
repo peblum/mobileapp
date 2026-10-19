@@ -132,6 +132,7 @@ fun SpeechSection(
     mode: CactusSTTMode,
     spokenLanguage: String?,
     selectedModel: String?,
+    modelPinned: Boolean,
     onDeviceSupported: Boolean,
     platformSttAvailable: Boolean,
     hasOfflineModels: Boolean,
@@ -156,7 +157,7 @@ fun SpeechSection(
         value = modelManager.getSelectableSTTModels()
     }
     val currentModelInfo = selectableModels.firstOrNull { it.slug == currentModel }
-    val languageSelectable = spokenLanguageSelectable(mode, currentModelInfo)
+    val languageSelectable = spokenLanguageSelectable(mode, currentModelInfo.takeIf { modelPinned })
     var deletions by remember { mutableStateOf(0) }
     val downloadedSlugs by produceState(emptyList<String>(), downloadStatus, deletions) {
         value = withContext(Dispatchers.Default) { modelManager.getDownloadedSTTModelSlugs() }

@@ -110,7 +110,12 @@ data class STTConfig(
     val modelName: String? = null,
     /** ISO 639-1 language code. Null means auto-detect. */
     val spokenLanguage: String? = null,
-)
+) {
+    val localModel: String
+        get() = modelName ?: if (spokenLanguage == ENGLISH) CommonBuildKonfig.CACTUS_STT_MODEL_ENG else CommonBuildKonfig.CACTUS_STT_MODEL
+}
+
+private const val ENGLISH = "en"
 
 fun defaultSttMode(
     wisprAuthUrl: String? = CommonBuildKonfig.WISPR_AUTH_URL,

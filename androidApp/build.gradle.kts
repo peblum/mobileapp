@@ -125,7 +125,7 @@ dependencies {
 
 abstract class BundleSpeechModels : DefaultTask() {
     @get:Input
-    abstract val version: Property<String>
+    abstract val versions: MapProperty<String, String>
 
     @get:Input
     abstract val checksums: MapProperty<String, String>
@@ -139,15 +139,16 @@ abstract class BundleSpeechModels : DefaultTask() {
     @TaskAction
     fun bundle() {
         val models = assetsDir.get().asFile.resolve("models").apply { deleteRecursively(); mkdirs() }
-        val cache = cacheDir.get().asFile.resolve(version.get()).apply { mkdirs() }
         checksums.get().forEach { (slug, checksum) ->
+            val version = versions.get().getValue(slug)
+            val cache = cacheDir.get().asFile.resolve(version).apply { mkdirs() }
             val zipName = "$slug-cq4.zip"
             val cached = cache.resolve(zipName)
             if (!cached.exists() || sha256(cached) != checksum) {
                 val partial = File.createTempFile(zipName, ".part", cache)
                 try {
                     logger.lifecycle("Downloading $zipName")
-                    val connection = URI("https://huggingface.co/Cactus-Compute/$slug/resolve/${version.get()}/$zipName").toURL()
+                    val connection = URI("https://huggingface.co/Cactus-Compute/$slug/resolve/$version/$zipName").toURL()
                         .openConnection()
                         .apply {
                             connectTimeout = 30_000
@@ -184,8 +185,11 @@ abstract class BundleSpeechModels : DefaultTask() {
 val bundleSpeechModels = providers.gradleProperty("bundleSpeechModels").orNull?.toBooleanStrictOrNull() ?: true
 
 val bundledSpeechModels = tasks.register<BundleSpeechModels>("bundleSpeechModels") {
-    version.set(providers.gradleProperty("cactusWeightsVersion"))
-    checksums.put(providers.gradleProperty("cactusSttModel").get(), providers.gradleProperty("cactusSttModelSha256"))
+    listOf("cactusSttModel" to "cactusWeightsVersion", "cactusSttModelEng" to "cactusEngWeightsVersion").forEach { (model, version) ->
+        val slug = providers.gradleProperty(model).get()
+        versions.put(slug, providers.gradleProperty(version))
+        checksums.put(slug, providers.gradleProperty("${model}Sha256"))
+    }
     cacheDir.set(gradle.gradleUserHomeDir.resolve("caches/bundled-speech-models"))
 }
 

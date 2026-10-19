@@ -96,12 +96,12 @@ class ModelManagementScreenViewModel(
         }
     }
 
-    val currentSTTModel = coreConfigHolder.config.map { it.sttConfig.modelName }.onEach {
+    val currentSTTModel = coreConfigHolder.config.map { it.sttConfig.localModel }.onEach {
         Logger.d("Current STT model changed to $it")
     }.stateIn(
         viewModelScope,
         started = kotlinx.coroutines.flow.SharingStarted.Lazily,
-        initialValue = coreConfigHolder.config.value.sttConfig.modelName
+        initialValue = coreConfigHolder.config.value.sttConfig.localModel
     )
 
     sealed interface AvailableModelsState {

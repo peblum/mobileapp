@@ -70,11 +70,12 @@ class CommonAppDelegate(
     private val syncInProgress = MutableStateFlow(false)
 
     private fun unpackBundledSpeechModel(modelProvider: CactusModelPathProvider) {
-        val model = CommonBuildKonfig.CACTUS_STT_MODEL
-        if (!coreConfigHolder.config.value.sttConfig.mode.usesLocalCactus() || !modelProvider.isModelBundled(model)) return
+        val sttConfig = coreConfigHolder.config.value.sttConfig
+        val model = sttConfig.localModel
+        if (!sttConfig.mode.usesLocalCactus() || !modelProvider.isModelBundled(model)) return
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                modelProvider.getSTTModelPath()
+                modelProvider.getSTTModelPath(model)
                 logger.i { "Bundled speech model $model is ready" }
             } catch (e: Exception) {
                 logger.w(e) { "Unpacking the bundled speech model $model failed" }
@@ -136,7 +137,6 @@ class CommonAppDelegate(
                         coreConfigHolder.config.value.copy(
                             sttConfig = coreConfigHolder.config.value.sttConfig.copy(
                                 mode = saved,
-                                modelName = CommonBuildKonfig.CACTUS_STT_MODEL,
                             )
                         )
                     )

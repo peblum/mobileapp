@@ -109,7 +109,7 @@ class CactusTranscriptionService(
     init {
         sttConfig.onEach {
             logger.i { "Cactus STT config changed: $it" }
-            if (it.modelName != lastInitedModel) {
+            if (it.localModel != lastInitedModel) {
                 initJob = performInit()
             }
         }.launchIn(scope)
@@ -154,7 +154,7 @@ class CactusTranscriptionService(
         }
         if (freeMemory < PLATFORM_MIN_TRANSCRIPTION_MEMORY_MB) {
             logger.e { "Low free memory ($freeMemory MB), skipping local transcription" }
-            throw TranscriptionException.NotEnoughMemory(modelUsed = sttConfig.value.modelName)
+            throw TranscriptionException.NotEnoughMemory(modelUsed = sttConfig.value.localModel)
         }
         return withCactusStopOnCancel(handle) {
             parseTranscriptionText(cactusTranscribe(handle, audioPath, "", null, null, null)).also { text ->
@@ -216,7 +216,7 @@ class CactusTranscriptionService(
         val config = sttConfig.value
         if (config.mode == CactusSTTMode.RemoteOnly) return
         if (!isCactusSupported()) return
-        val sttModelName = sttConfig.value.modelName ?: CommonBuildKonfig.CACTUS_STT_MODEL
+        val sttModelName = config.localModel
         val usable = modelProvider.isModelDownloaded(sttModelName) && sttModelName !in modelProvider.getIncompatibleModels()
         if (!usable && !modelProvider.isModelBundled(sttModelName)) {
             logger.w { "STT model '$sttModelName' unavailable or needs update, skipping init" }
@@ -224,7 +224,7 @@ class CactusTranscriptionService(
         }
         val start = Clock.System.now()
         modelMutex.withLock {
-            if (config.modelName != lastInitedModel && modelHandle != 0L) {
+            if (sttModelName != lastInitedModel && modelHandle != 0L) {
                 cactusDestroy(modelHandle)
                 modelHandle = 0L
             }
@@ -232,14 +232,14 @@ class CactusTranscriptionService(
                 val modelPath = modelProvider.getSTTModelPath(sttModelName)
                 cactusSetBackend("cpu")
                 modelHandle = cactusInit(modelPath, null, false)
-                lastInitedModel = config.modelName
+                lastInitedModel = sttModelName
                 val initDuration = Clock.System.now() - start
                 logger.d { "Cactus STT model initialized in $initDuration" }
             }
         }
     }
 
-    private fun modelExists(): Boolean = (sttConfig.value.modelName ?: CommonBuildKonfig.CACTUS_STT_MODEL).let { modelProvider.isModelDownloaded(it) || modelProvider.isModelBundled(it) }
+    private fun modelExists(): Boolean = sttConfig.value.localModel.let { modelProvider.isModelDownloaded(it) || modelProvider.isModelBundled(it) }
 
     private fun performInit(): Job {
         return scope.launch(Dispatchers.IO) {
@@ -258,7 +258,7 @@ class CactusTranscriptionService(
     fun isLocalAvailable(): Boolean = isCactusSupported() && (modelHandle != 0L || modelExists())
 
     fun earlyInit() {
-        if (initJob == null || modelHandle == 0L || lastInitedModel != sttConfig.value.modelName) {
+        if (initJob == null || modelHandle == 0L || lastInitedModel != sttConfig.value.localModel) {
             if (initJob?.isActive == true) {
                 logger.d { "Cactus STT model initialization already in progress" }
                 return
@@ -274,7 +274,7 @@ class CactusTranscriptionService(
 
     /** Kick off init if needed and wait (up to [initTimeout]) for it to settle. */
     private suspend fun ensureInit(initTimeout: Duration) {
-        if (initJob == null || modelHandle == 0L || lastInitedModel != sttConfig.value.modelName) {
+        if (initJob == null || modelHandle == 0L || lastInitedModel != sttConfig.value.localModel) {
             if (initJob?.isActive != true) {
                 initJob = performInit()
             }
@@ -295,7 +295,7 @@ class CactusTranscriptionService(
             val handle = modelHandle
             if (handle == 0L) {
                 if (!isCactusSupported()) {
-                    throw TranscriptionException.TranscriptionServiceUnavailable(modelUsed = sttConfig.value.modelName)
+                    throw TranscriptionException.TranscriptionServiceUnavailable(modelUsed = sttConfig.value.localModel)
                 }
                 throw TranscriptionException.TranscriptionRequiresDownload("Model not initialized")
             }
@@ -337,7 +337,7 @@ class CactusTranscriptionService(
                 val path = getCacheFilePath()
                 val started = nativeScope.async {
                     if (!transcriptionMutex.tryLock()) {
-                        throw TranscriptionException.TranscriptionInProgress(modelUsed = sttConfig.value.modelName)
+                        throw TranscriptionException.TranscriptionInProgress(modelUsed = sttConfig.value.localModel)
                     }
                     try {
                         SystemFileSystem.sink(path).buffered().use { sink ->
@@ -385,7 +385,7 @@ class CactusTranscriptionService(
         return text.takeIf { it.isNotBlank() }
             ?: throw TranscriptionException.NoSpeechDetected(
                 "empty_result",
-                modelUsed = sttConfig.value.modelName,
+                modelUsed = sttConfig.value.localModel,
             )
     }
 }

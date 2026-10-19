@@ -70,7 +70,6 @@ fun SttModelUpdatePrompt() {
                         configHolder.config.value.copy(
                             sttConfig = configHolder.config.value.sttConfig.copy(
                                 mode = restored,
-                                modelName = sttModel,
                             )
                         )
                     )

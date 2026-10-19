@@ -28,7 +28,7 @@ class ModelManager(
 
     fun getBundledModelSlugs(): List<String> {
         val provider = modelPathProvider ?: return emptyList()
-        return listOf(CommonBuildKonfig.CACTUS_STT_MODEL).filter { provider.isModelBundled(it) }
+        return listOf(CommonBuildKonfig.CACTUS_STT_MODEL, CommonBuildKonfig.CACTUS_STT_MODEL_ENG).filter { provider.isModelBundled(it) }
     }
 
     fun getDownloadedModelSlugs(): List<String> {

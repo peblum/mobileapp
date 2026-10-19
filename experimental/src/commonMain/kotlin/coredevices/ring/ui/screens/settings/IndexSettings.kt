@@ -172,10 +172,10 @@ fun IndexSettings(coreNav: CoreNav) {
     val speechScope = rememberCoroutineScope()
     val onDeviceSpeechSupported = remember { isCactusSupported() }
     val modelDownloadStatus by modelManager.modelDownloadStatus.collectAsState()
-    val selectedSttModel = coreConfig.sttConfig.modelName
+    val selectedSttModel = coreConfig.sttConfig.localModel
     val hasOfflineSpeechModels by produceState(false, modelDownloadStatus, selectedSttModel) {
         value = withContext(Dispatchers.Default) {
-            val slug = selectedSttModel ?: modelManager.getRecommendedSTTModel().modelSlug
+            val slug = selectedSttModel
             slug in modelManager.getDownloadedSTTModelSlugs()
         }
     }
@@ -400,6 +400,7 @@ fun IndexSettings(coreNav: CoreNav) {
                     mode = coreConfig.sttConfig.mode,
                     spokenLanguage = coreConfig.sttConfig.spokenLanguage,
                     selectedModel = selectedSttModel,
+                    modelPinned = coreConfig.sttConfig.modelName != null,
                     onDeviceSupported = onDeviceSpeechSupported,
                     platformSttAvailable = platformSttAvailable,
                     hasOfflineModels = hasOfflineSpeechModels,
